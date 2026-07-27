@@ -1,0 +1,119 @@
+package g.p.cbb.utils
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.*
+import android.net.Uri
+import androidx.core.content.FileProvider
+import g.p.cbb.data.entity.BillItem
+import g.p.cbb.data.entity.Customer
+import g.p.cbb.data.entity.Transaction
+import java.io.File
+import java.io.FileOutputStream
+
+import java.text.SimpleDateFormat
+import java.util.*
+
+object ImageGenerator {
+    fun shareBillImage(
+        context: Context,
+        customer: Customer,
+        bill: Transaction,
+        items: List<BillItem>,
+        payments: List<Transaction>
+    ) {
+        val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+        val totalPaid = payments.sumOf { it.amount }
+        
+        val width = 600
+        val height = 900 + (items.size * 40) + (payments.size * 40)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
+
+        // Background
+        canvas.drawColor(Color.WHITE)
+
+        var y = 60f
+        paint.color = Color.BLACK
+        paint.textSize = 32f
+        paint.isFakeBoldText = true
+        canvas.drawText("CUSTOMER BILL", 200f, y, paint)
+        
+        y += 60f
+        paint.textSize = 24f
+        paint.isFakeBoldText = false
+        canvas.drawText("Customer: ${customer.name}", 40f, y, paint)
+        y += 40f
+        canvas.drawText("Phone: ${customer.phone}", 40f, y, paint)
+        y += 40f
+        canvas.drawText("Bill Date: ${dateFormat.format(Date(bill.timestamp))}", 40f, y, paint)
+        y += 60f
+        
+        paint.isFakeBoldText = true
+        canvas.drawText("Items", 40f, y, paint)
+        canvas.drawText("Price", 480f, y, paint)
+        y += 20f
+        canvas.drawLine(40f, y, 560f, y, paint)
+        y += 40f
+        
+        paint.isFakeBoldText = false
+        items.forEach { item ->
+            canvas.drawText(item.productName, 40f, y, paint)
+            canvas.drawText("₹${"%.2f".format(item.price)}", 480f, y, paint)
+            y += 40f
+        }
+        
+        y += 20f
+        canvas.drawLine(40f, y, 560f, y, paint)
+        y += 40f
+        
+        paint.isFakeBoldText = true
+        canvas.drawText("Total Bill Amount:", 40f, y, paint)
+        canvas.drawText("₹${"%.2f".format(bill.amount)}", 480f, y, paint)
+        y += 60f
+
+        if (payments.isNotEmpty()) {
+            paint.color = Color.parseColor("#4CAF50")
+            paint.isFakeBoldText = true
+            canvas.drawText("Received Payments", 40f, y, paint)
+            y += 20f
+            canvas.drawLine(40f, y, 560f, y, paint)
+            y += 40f
+            
+            paint.isFakeBoldText = false
+            paint.textSize = 20f
+            payments.forEach { payment ->
+                canvas.drawText(dateFormat.format(Date(payment.timestamp)), 40f, y, paint)
+                canvas.drawText("₹${"%.2f".format(payment.amount)}", 480f, y, paint)
+                y += 40f
+            }
+            y += 20f
+        }
+        
+        paint.color = Color.BLACK
+        paint.textSize = 24f
+        paint.isFakeBoldText = true
+        canvas.drawText("Total Received:", 40f, y, paint)
+        canvas.drawText("₹${"%.2f".format(totalPaid)}", 480f, y, paint)
+        y += 40f
+        
+        paint.color = Color.parseColor("#F44336")
+        canvas.drawText("Remaining Balance:", 40f, y, paint)
+        canvas.drawText("₹${"%.2f".format(bill.amount - totalPaid)}", 480f, y, paint)
+
+        // Save and Share
+        val file = File(context.cacheDir, "bill_share.png")
+        FileOutputStream(file).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Bill"))
+    }
+}
