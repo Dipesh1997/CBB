@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import g.p.cbb.data.entity.BillItem
+import g.p.cbb.data.entity.ProductSuggestion
 import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.ui.components.EmptyStateGuidance
@@ -33,6 +34,7 @@ import g.p.cbb.utils.ReminderManager
 import g.p.cbb.viewmodel.CbbViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import g.p.cbb.utils.VoiceRecognizer
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -366,6 +368,7 @@ fun AddTransactionDialog(
         initialMinute = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.MINUTE)
     )
 
+    val context = LocalContext.current
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
     val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
 
@@ -377,6 +380,53 @@ fun AddTransactionDialog(
     }
 
     val suggestions by viewModel.productSuggestions.collectAsState(initial = emptyList())
+
+    var isListening by remember { mutableStateOf(false) }
+    val voiceRecognizer = remember {
+        lateinit var recognizer: VoiceRecognizer
+        recognizer = VoiceRecognizer(
+            context = context,
+            onResult = { text ->
+                val words = text.split(" ")
+                words.forEach { word ->
+                    val cleanWord = word.trim().lowercase()
+                    if (cleanWord == "done") {
+                        recognizer.stopListening()
+                        
+                        val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
+                            .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
+                        val total = items.sumOf { it.price }
+                        onAdd(total, "Bill: ${items.size} items", items, selectedTimestamp)
+                    } else if (cleanWord == "next") {
+                        if (billItems.last().first.isNotEmpty()) {
+                            billItems.add("" to "")
+                        }
+                    } else {
+                        suggestions.find { it.name.equals(cleanWord, ignoreCase = true) }?.let { matched ->
+                            val lastIndex = billItems.size - 1
+                            if (lastIndex >= 0) {
+                                billItems[lastIndex] = matched.name to matched.lastPrice.toString()
+                            }
+                        }
+                    }
+                }
+            },
+            onStateChange = { isListening = it }
+        )
+        recognizer
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { voiceRecognizer.destroy() }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            voiceRecognizer.startListening()
+        }
+    }
 
     if (showDatePicker) {
         DatePickerDialog(
@@ -477,9 +527,27 @@ fun AddTransactionDialog(
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
-                    TextButton(onClick = { billItems.add("" to "") }) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Text("New Line")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { billItems.add("" to "") }) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Text("New Line")
+                        }
+                        
+                        IconButton(
+                            onClick = {
+                                if (isListening) {
+                                    voiceRecognizer.stopListening()
+                                } else {
+                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
+                                contentDescription = "Voice Typing",
+                                tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Total Bill: ₹${"%.2f".format(totalBill)}", fontWeight = FontWeight.Bold, fontSize = 18.sp)

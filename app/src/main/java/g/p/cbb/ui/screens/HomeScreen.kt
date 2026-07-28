@@ -133,6 +133,7 @@ fun HomeScreen(
                         Icons.Default.Add to "Tap the '+' button at the bottom.",
                         Icons.Default.Person to "Enter customer name and phone.",
                         Icons.Default.ShoppingCart to "Start recording their transactions.",
+                        Icons.Default.Mic to "Use Voice Billing for faster entry.",
                         Icons.Default.Warning to "Long-press to mark as Bad Debt (stays at bottom)."
                     )
                 )
