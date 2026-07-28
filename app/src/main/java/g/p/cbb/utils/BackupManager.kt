@@ -31,6 +31,9 @@ object BackupManager {
             val walFile = File(dbFile.path + "-wal")
             if (walFile.exists()) copyFile(walFile, File(destFile.path + "-wal"))
 
+            // Scan file for visibility
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(destFile.absolutePath), null, null)
+
             Log.d("BackupManager", "Database exported to ${destFile.absolutePath}")
             true
         } catch (e: Exception) {

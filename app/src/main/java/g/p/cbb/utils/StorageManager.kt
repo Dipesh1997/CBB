@@ -14,7 +14,8 @@ object StorageManager {
         val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
         val udaariRoot = File(publicDocs, ROOT_FOLDER)
         if (!udaariRoot.exists()) {
-            udaariRoot.mkdirs()
+            val created = udaariRoot.mkdirs()
+            android.util.Log.d("StorageManager", "Creating udaari root: $created at ${udaariRoot.absolutePath}")
         }
         return udaariRoot
     }

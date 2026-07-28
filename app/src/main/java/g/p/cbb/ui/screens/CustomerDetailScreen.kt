@@ -89,7 +89,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         IconButton(onClick = {
                             PdfGenerator.generateCustomerLedger(context, currCustomer, transactions)
                         }) {
-                            Icon(Icons.Default.Info, contentDescription = "Export PDF")
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
                         }
                     }
                 )

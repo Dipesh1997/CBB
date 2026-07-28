@@ -75,7 +75,9 @@ object PdfGenerator {
 
         try {
             pdfDocument.writeTo(FileOutputStream(file))
-            Toast.makeText(context, "Statement Saved in udaari/statements", Toast.LENGTH_LONG).show()
+            // Scan file so it shows up in file manager immediately
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+            Toast.makeText(context, "Statement Saved: Documents/udaari/statements", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "Error generating PDF", Toast.LENGTH_SHORT).show()

@@ -116,6 +116,9 @@ object ImageGenerator {
         FileOutputStream(permFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
+        
+        // Scan file so it shows up in gallery/file manager
+        android.media.MediaScannerConnection.scanFile(context, arrayOf(permFile.absolutePath), null, null)
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
         
