@@ -34,6 +34,7 @@ import g.p.cbb.utils.ReminderManager
 import g.p.cbb.viewmodel.CbbViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import g.p.cbb.utils.TextNormalizer
 import g.p.cbb.utils.VoiceRecognizer
 import kotlin.math.abs
 
@@ -387,26 +388,40 @@ fun AddTransactionDialog(
         recognizer = VoiceRecognizer(
             context = context,
             onResult = { text ->
-                val words = text.split(" ")
-                words.forEach { word ->
-                    val cleanWord = word.trim().lowercase()
-                    if (cleanWord == "done") {
-                        recognizer.stopListening()
-                        
-                        val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
-                            .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
-                        val total = items.sumOf { it.price }
-                        onAdd(total, "Bill: ${items.size} items", items, selectedTimestamp)
-                    } else if (cleanWord == "next") {
-                        if (billItems.last().first.isNotEmpty()) {
-                            billItems.add("" to "")
-                        }
-                    } else {
-                        suggestions.find { it.name.equals(cleanWord, ignoreCase = true) }?.let { matched ->
+                // 1. Normalize number words to digits
+                val normalizedText = TextNormalizer.normalize(text)
+                
+                // 2. Identify commands "next" and "done"
+                // Split by keywords while keeping track of them
+                val segments = normalizedText.split("(?i)\\b(next|done)\\b".toRegex())
+                val commands = "(?i)\\b(next|done)\\b".toRegex().findAll(normalizedText).map { it.value.lowercase() }.toList()
+                
+                segments.forEachIndexed { index, segment ->
+                    val productPhrase = segment.trim()
+                    
+                    if (productPhrase.isNotEmpty()) {
+                        // Match with suggestions based on the full phrase
+                        suggestions.find { it.name.equals(productPhrase, ignoreCase = true) }?.let { matched ->
                             val lastIndex = billItems.size - 1
                             if (lastIndex >= 0) {
                                 billItems[lastIndex] = matched.name to matched.lastPrice.toString()
                             }
+                        }
+                    }
+                    
+                    // Handle command if one exists for this segment
+                    if (index < commands.size) {
+                        val cmd = commands[index]
+                        if (cmd == "next") {
+                            if (billItems.last().first.isNotEmpty()) {
+                                billItems.add("" to "")
+                            }
+                        } else if (cmd == "done") {
+                            recognizer.stopListening()
+                            val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
+                                .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
+                            val total = items.sumOf { it.price }
+                            onAdd(total, "Bill: ${items.size} items", items, selectedTimestamp)
                         }
                     }
                 }
