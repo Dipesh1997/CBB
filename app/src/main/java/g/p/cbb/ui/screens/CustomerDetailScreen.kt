@@ -227,6 +227,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
 
     showAddTransactionDialog?.let { type ->
         AddTransactionDialog(
+            viewModel = viewModel,
             type = type,
             startInBillMode = startInBillMode,
             onDismiss = { 
@@ -244,6 +245,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     transactionToEdit?.let { transaction ->
         val billItems by viewModel.selectedTransactionItems.collectAsState()
         AddTransactionDialog(
+            viewModel = viewModel,
             type = transaction.type,
             initialAmount = transaction.amount.toString(),
             initialNote = transaction.note,
@@ -339,6 +341,7 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionDialog(
+    viewModel: CbbViewModel,
     type: TransactionType,
     initialAmount: String = "",
     initialNote: String = "",
@@ -372,6 +375,8 @@ fun AddTransactionDialog(
         if (list.isEmpty()) list.add("" to "")
         list 
     }
+
+    val suggestions by viewModel.productSuggestions.collectAsState(initial = emptyList())
 
     if (showDatePicker) {
         DatePickerDialog(
@@ -435,16 +440,37 @@ fun AddTransactionDialog(
                     LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                         items(billItems.size) { index ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextField(
-                                    value = billItems[index].first,
-                                    onValueChange = { billItems[index] = it to billItems[index].second },
-                                    label = { Text("Product") },
-                                    modifier = Modifier.weight(1.5f).padding(end = 4.dp)
-                                )
+                                Column(modifier = Modifier.weight(1.5f).padding(end = 4.dp)) {
+                                    TextField(
+                                        value = billItems[index].first,
+                                        onValueChange = { billItems[index] = it to billItems[index].second },
+                                        label = { Text("Product") },
+                                        leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    
+                                    val filteredSuggestions = suggestions.filter { 
+                                        it.name.contains(billItems[index].first, ignoreCase = true) && 
+                                        it.name != billItems[index].first
+                                    }
+                                    if (filteredSuggestions.isNotEmpty() && billItems[index].first.isNotEmpty()) {
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            filteredSuggestions.take(3).forEach { suggestion ->
+                                                DropdownMenuItem(
+                                                    text = { Text("${suggestion.name} (₹${suggestion.lastPrice})") },
+                                                    onClick = { 
+                                                        billItems[index] = suggestion.name to suggestion.lastPrice.toString()
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                                 TextField(
                                     value = billItems[index].second,
                                     onValueChange = { billItems[index] = billItems[index].first to it },
                                     label = { Text("Price") },
+                                    leadingIcon = { Icon(Icons.Default.Payments, contentDescription = null) },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -494,9 +520,15 @@ fun AddTransactionDialog(
                     TextField(
                         value = amount,
                         onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) amount = it },
-                        label = { Text("Amount") }
+                        label = { Text("Amount") },
+                        leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) }
                     )
-                    TextField(value = note, onValueChange = { note = it }, label = { Text("Note (Optional)") })
+                    TextField(
+                        value = note, 
+                        onValueChange = { note = it }, 
+                        label = { Text("Note (Optional)") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) }
+                    )
                     if (type == TransactionType.DEBIT) {
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedButton(onClick = { 
@@ -604,9 +636,15 @@ fun PartPaymentDialog(onDismiss: () -> Unit, onConfirm: (Double, String) -> Unit
                 TextField(
                     value = amount,
                     onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) amount = it },
-                    label = { Text("Amount Received") }
+                    label = { Text("Amount Received") },
+                    leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) }
                 )
-                TextField(value = note, onValueChange = { note = it }, label = { Text("Note (Optional)") })
+                TextField(
+                    value = note, 
+                    onValueChange = { note = it }, 
+                    label = { Text("Note (Optional)") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) }
+                )
             }
         },
         confirmButton = {

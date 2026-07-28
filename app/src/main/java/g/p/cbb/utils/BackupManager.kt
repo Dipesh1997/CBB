@@ -71,6 +71,28 @@ object BackupManager {
         }
     }
 
+    fun importSpecificDatabase(context: Context, database: AppDatabase, file: File): String? {
+        return try {
+            database.close()
+            val dbFile = context.getDatabasePath(DB_NAME)
+            copyFile(file, dbFile)
+            val shmSource = File(file.path + "-shm")
+            if (shmSource.exists()) copyFile(shmSource, File(dbFile.path + "-shm"))
+            val walSource = File(file.path + "-wal")
+            if (walSource.exists()) copyFile(walSource, File(dbFile.path + "-wal"))
+            null
+        } catch (e: Exception) {
+            e.message
+        }
+    }
+
+    fun getBackupHistory(context: Context): List<File> {
+        val backupFolder = StorageManager.getBackupFolder(context)
+        return backupFolder.listFiles { file -> file.name.endsWith(".db") }
+            ?.sortedByDescending { it.lastModified() }
+            ?: emptyList()
+    }
+
     private fun copyFile(source: File, dest: File) {
         FileInputStream(source).use { input ->
             FileOutputStream(dest).use { output ->

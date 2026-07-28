@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -35,8 +34,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun HomeScreen(
     viewModel: CbbViewModel,
-    onCustomerClick: (Customer) -> Unit,
-    onHistoryClick: () -> Unit
+    onCustomerClick: (Customer) -> Unit
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val currentSort by viewModel.sortOption.collectAsState()
@@ -44,7 +42,6 @@ fun HomeScreen(
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showOverflowMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     // Schedule Daily Backup
@@ -107,34 +104,6 @@ fun HomeScreen(
                                 text = { Text("Balance: High to Low") },
                                 onClick = { viewModel.updateSortOption(SortOption.BALANCE_HIGH_TO_LOW); showSortMenu = false },
                                 leadingIcon = { if (currentSort == SortOption.BALANCE_HIGH_TO_LOW) Icon(Icons.Default.Check, null) }
-                            )
-                        }
-                    }
-                    IconButton(onClick = onHistoryClick) {
-                        Icon(Icons.Default.History, contentDescription = "History")
-                    }
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
-                        }
-                        DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Backup Now") },
-                                onClick = {
-                                    val success = BackupManager.exportDatabase(context)
-                                    Toast.makeText(context, if (success) "Backup saved in udaari/backups" else "Backup failed", Toast.LENGTH_SHORT).show()
-                                    showOverflowMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Backup, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Restore Latest") },
-                                onClick = {
-                                    viewModel.restoreLatest(context)
-                                    Toast.makeText(context, "Checking for latest backup...", Toast.LENGTH_SHORT).show()
-                                    showOverflowMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Restore, null) }
                             )
                         }
                     }
@@ -268,9 +237,24 @@ fun CustomerDialog(
         title = { Text(title) },
         text = {
             Column {
-                TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-                TextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone") })
-                TextField(value = address, onValueChange = { address = it }, label = { Text("Address") })
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
+                )
+                TextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone") },
+                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) }
+                )
+                TextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("Address") },
+                    leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isBadDebt, onCheckedChange = { isBadDebt = it })

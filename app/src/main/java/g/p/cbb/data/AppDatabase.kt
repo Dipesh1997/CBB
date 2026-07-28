@@ -3,24 +3,28 @@ package g.p.cbb.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import g.p.cbb.data.dao.ActivityLogDao
-import g.p.cbb.data.dao.BillItemDao
-import g.p.cbb.data.dao.CustomerDao
-import g.p.cbb.data.dao.TransactionDao
-import g.p.cbb.data.entity.ActivityLog
-import g.p.cbb.data.entity.BillItem
-import g.p.cbb.data.entity.Customer
-import g.p.cbb.data.entity.Transaction
-import g.p.cbb.data.entity.TransactionType
 import androidx.room.TypeConverter
+import g.p.cbb.data.dao.*
+import g.p.cbb.data.entity.*
 
-@Database(entities = [Customer::class, Transaction::class, BillItem::class, ActivityLog::class], version = 6, exportSchema = false)
+@Database(
+    entities = [
+        Customer::class, 
+        Transaction::class, 
+        BillItem::class, 
+        ActivityLog::class, 
+        ProductSuggestion::class
+    ], 
+    version = 7, 
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun customerDao(): CustomerDao
     abstract fun transactionDao(): TransactionDao
     abstract fun billItemDao(): BillItemDao
     abstract fun activityLogDao(): ActivityLogDao
+    abstract fun productSuggestionDao(): ProductSuggestionDao
 }
 
 class Converters {

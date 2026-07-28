@@ -33,6 +33,14 @@ class CbbViewModel @Inject constructor(
     }
 
     val activityLogs = repository.getActivityLogs()
+    val productSuggestions = repository.getProductSuggestions()
+
+    private val _backupHistory = MutableStateFlow<List<java.io.File>>(emptyList())
+    val backupHistory = _backupHistory.asStateFlow()
+
+    fun refreshBackupHistory(context: android.content.Context) {
+        _backupHistory.value = g.p.cbb.utils.BackupManager.getBackupHistory(context)
+    }
 
     private val _selectedCustomer = MutableStateFlow<Customer?>(null)
     val selectedCustomer = _selectedCustomer.asStateFlow()
@@ -128,12 +136,41 @@ class CbbViewModel @Inject constructor(
         settingsRepository.saveSortOption(option)
     }
 
+    fun addProduct(name: String, price: Double) {
+        viewModelScope.launch {
+            repository.addProductSuggestion(name, price)
+        }
+    }
+
+    fun updateProduct(suggestion: ProductSuggestion) {
+        viewModelScope.launch {
+            repository.updateProductSuggestion(suggestion)
+        }
+    }
+
+    fun deleteProduct(suggestion: ProductSuggestion) {
+        viewModelScope.launch {
+            repository.deleteProductSuggestion(suggestion)
+        }
+    }
+
     fun restoreLatest(context: android.content.Context) {
         viewModelScope.launch {
             val error = repository.restoreLatestBackup(context)
             if (error == null) {
                 // Try to refresh. Usually app needs restart but we try.
                 _selectedCustomer.value?.let { refreshCustomer(it.id) }
+                refreshBackupHistory(context)
+            }
+        }
+    }
+
+    fun restoreSpecific(context: android.content.Context, file: java.io.File) {
+        viewModelScope.launch {
+            val error = g.p.cbb.utils.BackupManager.importSpecificDatabase(context, repository.getDatabase(), file)
+            if (error == null) {
+                _selectedCustomer.value?.let { refreshCustomer(it.id) }
+                refreshBackupHistory(context)
             }
         }
     }

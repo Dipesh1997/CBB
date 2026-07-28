@@ -1,10 +1,7 @@
 package g.p.cbb.repository
 
 import g.p.cbb.data.AppDatabase
-import g.p.cbb.data.dao.ActivityLogDao
-import g.p.cbb.data.dao.BillItemDao
-import g.p.cbb.data.dao.CustomerDao
-import g.p.cbb.data.dao.TransactionDao
+import g.p.cbb.data.dao.*
 import g.p.cbb.data.entity.*
 import g.p.cbb.utils.BackupManager
 import kotlinx.coroutines.flow.Flow
@@ -17,9 +14,12 @@ class CbbRepository @Inject constructor(
     private val customerDao: CustomerDao,
     private val transactionDao: TransactionDao,
     private val billItemDao: BillItemDao,
-    private val activityLogDao: ActivityLogDao
+    private val activityLogDao: ActivityLogDao,
+    private val productSuggestionDao: ProductSuggestionDao
 ) {
     fun getAllCustomers(): Flow<List<Customer>> = customerDao.getAllCustomers()
+
+    fun getDatabase(): AppDatabase = database
 
     suspend fun getCustomerById(id: Long): Customer? = customerDao.getCustomerById(id)
 
@@ -51,11 +51,15 @@ class CbbRepository @Inject constructor(
     fun getTransactionsForCustomer(customerId: Long): Flow<List<Transaction>> =
         transactionDao.getTransactionsForCustomer(customerId)
 
-    suspend fun addTransaction(transaction: Transaction, billItems: List<BillItem> = emptyList()) {
+    suspend fun addTransaction(transaction: Transaction, billItems: List<BillItem> = emptyList(), timestamp: Long = System.currentTimeMillis()) {
         val transactionId = transactionDao.insertTransaction(transaction)
         if (billItems.isNotEmpty()) {
             val itemsWithId = billItems.map { it.copy(transactionId = transactionId) }
             billItemDao.insertBillItems(itemsWithId)
+            // Save suggestions
+            billItems.forEach { item ->
+                productSuggestionDao.upsertSuggestion(ProductSuggestion(item.productName, item.price))
+            }
         }
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
         customerDao.updateBalance(transaction.customerId, balanceChange)
@@ -88,6 +92,11 @@ class CbbRepository @Inject constructor(
         val itemsWithId = billItems.map { it.copy(transactionId = newTransaction.id) }
         billItemDao.insertBillItems(itemsWithId)
 
+        // Save suggestions
+        billItems.forEach { item ->
+            productSuggestionDao.upsertSuggestion(ProductSuggestion(item.productName, item.price))
+        }
+
         val customer = customerDao.getCustomerById(newTransaction.customerId)
         logActivity("Updated ${newTransaction.type} for ${customer?.name ?: "Unknown"}: ₹${oldTransaction.amount} -> ₹${newTransaction.amount}")
     }
@@ -114,6 +123,20 @@ class CbbRepository @Inject constructor(
     }
 
     fun getActivityLogs(): Flow<List<ActivityLog>> = activityLogDao.getAllLogs()
+
+    fun getProductSuggestions(): Flow<List<ProductSuggestion>> = productSuggestionDao.getAllSuggestions()
+
+    suspend fun addProductSuggestion(name: String, price: Double) {
+        productSuggestionDao.upsertSuggestion(ProductSuggestion(name, price))
+    }
+
+    suspend fun updateProductSuggestion(suggestion: ProductSuggestion) {
+        productSuggestionDao.updateSuggestion(suggestion)
+    }
+
+    suspend fun deleteProductSuggestion(suggestion: ProductSuggestion) {
+        productSuggestionDao.deleteSuggestion(suggestion)
+    }
 
     private suspend fun logActivity(description: String) {
         activityLogDao.insertLog(ActivityLog(description = description))

@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import g.p.cbb.data.AppDatabase
 import g.p.cbb.data.dao.ActivityLogDao
 import g.p.cbb.data.dao.BillItemDao
+import g.p.cbb.data.dao.ProductSuggestionDao
 import g.p.cbb.data.dao.CustomerDao
 import g.p.cbb.data.dao.TransactionDao
 import javax.inject.Singleton
@@ -37,4 +38,7 @@ object DatabaseModule {
 
     @Provides
     fun provideActivityLogDao(database: AppDatabase): ActivityLogDao = database.activityLogDao()
+
+    @Provides
+    fun provideProductSuggestionDao(database: AppDatabase): ProductSuggestionDao = database.productSuggestionDao()
 }
