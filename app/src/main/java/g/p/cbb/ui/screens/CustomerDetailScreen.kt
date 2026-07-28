@@ -2,7 +2,6 @@ package g.p.cbb.ui.screens
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import g.p.cbb.data.entity.BillItem
 import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
@@ -33,6 +33,7 @@ import g.p.cbb.utils.ReminderManager
 import g.p.cbb.viewmodel.CbbViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +41,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     val customer by viewModel.selectedCustomer.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     var showAddTransactionDialog by remember { mutableStateOf<TransactionType?>(null) }
+    var startInBillMode by remember { mutableStateOf(false) }
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var selectedTransactionIdForDetails by remember { mutableStateOf<Long?>(null) }
     var showReminderDialog by remember { mutableStateOf(false) }
@@ -62,7 +64,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(currCustomer.name, modifier = Modifier.weight(1f))
                             IconButton(onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${currCustomer.phone}"))
+                                val intent = Intent(Intent.ACTION_DIAL, "tel:${currCustomer.phone}".toUri())
                                 context.startActivity(intent)
                             }) {
                                 Icon(Icons.Default.Call, contentDescription = "Call")
@@ -91,6 +93,18 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         }
                     }
                 )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = {
+                        startInBillMode = true
+                        showAddTransactionDialog = TransactionType.DEBIT
+                    },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "Create Bill")
+                }
             }
         ) { padding ->
             Column(modifier = Modifier.padding(padding)) {
@@ -129,7 +143,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                     Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Current Balance", fontSize = 16.sp)
                         Text(
-                            "₹${"%.2f".format(Math.abs(currCustomer.totalBalance))}",
+                            "₹${"%.2f".format(abs(currCustomer.totalBalance))}",
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (currCustomer.totalBalance >= 0) Color(0xFFF44336) else Color(0xFF4CAF50)
@@ -143,17 +157,25 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
-                        onClick = { showAddTransactionDialog = TransactionType.DEBIT },
+                        onClick = { 
+                            startInBillMode = false
+                            showAddTransactionDialog = TransactionType.DEBIT 
+                        },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
                     ) {
                         Text("YOU GAVE (DEBIT)")
                     }
+
                     Button(
-                        onClick = { showAddTransactionDialog = TransactionType.CREDIT },
+                        onClick = { 
+                            startInBillMode = false
+                            showAddTransactionDialog = TransactionType.CREDIT 
+                        },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
                     ) {
@@ -206,10 +228,15 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     showAddTransactionDialog?.let { type ->
         AddTransactionDialog(
             type = type,
-            onDismiss = { showAddTransactionDialog = null },
-            onAdd = { amount, note, billItems ->
-                viewModel.addTransaction(amount, type, note, billItems)
+            startInBillMode = startInBillMode,
+            onDismiss = { 
                 showAddTransactionDialog = null
+                startInBillMode = false
+            },
+            onAdd = { amount, note, billItems, timestamp ->
+                viewModel.addTransaction(amount, type, note, billItems, timestamp)
+                showAddTransactionDialog = null
+                startInBillMode = false
             }
         )
     }
@@ -220,14 +247,15 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
             type = transaction.type,
             initialAmount = transaction.amount.toString(),
             initialNote = transaction.note,
+            initialTimestamp = transaction.timestamp,
             initialBillItems = billItems.map { it.productName to it.price.toString() },
             isEdit = true,
             onDismiss = { 
                 transactionToEdit = null
                 viewModel.clearBillItems()
             },
-            onAdd = { amount, note, items ->
-                viewModel.updateTransaction(transaction, transaction.copy(amount = amount, note = note), items)
+            onAdd = { amount, note, items, timestamp ->
+                viewModel.updateTransaction(transaction, transaction.copy(amount = amount, note = note, timestamp = timestamp), items)
                 transactionToEdit = null
                 viewModel.clearBillItems()
             }
@@ -291,11 +319,9 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
     ListItem(
         headlineContent = { 
-            Text(
-                if (transaction.parentTransactionId != null) "Part Payment" 
-                else if (transaction.note.isEmpty()) transaction.type.name 
-                else transaction.note
-            ) 
+            val headline = if (transaction.parentTransactionId != null) "Part Payment" 
+            else transaction.note.ifEmpty { transaction.type.name }
+            Text(headline)
         },
         supportingContent = { Text(dateFormat.format(Date(transaction.timestamp))) },
         trailingContent = {
@@ -310,30 +336,100 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionDialog(
     type: TransactionType,
     initialAmount: String = "",
     initialNote: String = "",
+    initialTimestamp: Long = System.currentTimeMillis(),
     initialBillItems: List<Pair<String, String>> = emptyList(),
+    startInBillMode: Boolean = false,
     isEdit: Boolean = false,
     onDismiss: () -> Unit,
-    onAdd: (Double, String, List<BillItem>) -> Unit
+    onAdd: (Double, String, List<BillItem>, Long) -> Unit
 ) {
     var amount by remember { mutableStateOf(initialAmount) }
     var note by remember { mutableStateOf(initialNote) }
-    var isBillMode by remember { mutableStateOf(initialBillItems.isNotEmpty()) }
+    var isBillMode by remember { mutableStateOf(initialBillItems.isNotEmpty() || startInBillMode) }
+    
+    var selectedTimestamp by remember { mutableLongStateOf(initialTimestamp) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedTimestamp)
+    val timePickerState = rememberTimePickerState(
+        initialHour = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.HOUR_OF_DAY),
+        initialMinute = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.MINUTE)
+    )
+
+    val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+    val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+
     val billItems = remember { 
         val list = mutableStateListOf<Pair<String, String>>()
         list.addAll(initialBillItems)
+        if (list.isEmpty()) list.add("" to "")
         list 
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val date = datePickerState.selectedDateMillis ?: selectedTimestamp
+                    val cal = Calendar.getInstance().apply {
+                        timeInMillis = selectedTimestamp
+                        val h = get(Calendar.HOUR_OF_DAY)
+                        val m = get(Calendar.MINUTE)
+                        timeInMillis = date
+                        set(Calendar.HOUR_OF_DAY, h)
+                        set(Calendar.MINUTE, m)
+                    }
+                    selectedTimestamp = cal.timeInMillis
+                    showDatePicker = false
+                }) { Text("OK") }
+            }
+        ) { DatePicker(state = datePickerState) }
+    }
+
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val cal = Calendar.getInstance().apply {
+                        timeInMillis = selectedTimestamp
+                        set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        set(Calendar.MINUTE, timePickerState.minute)
+                    }
+                    selectedTimestamp = cal.timeInMillis
+                    showTimePicker = false
+                }) { Text("OK") }
+            },
+            text = { TimePicker(state = timePickerState) }
+        )
     }
 
     if (isBillMode) {
         val totalBill = billItems.sumOf { it.second.toDoubleOrNull() ?: 0.0 }
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text(if (isEdit) "Edit Bill" else "Create Bill") },
+            title = {
+                Column {
+                    Text(if (isEdit) "Edit Bill" else "Create Bill")
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showDatePicker = true }) {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(dateFormat.format(Date(selectedTimestamp)), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp).clickable { showTimePicker = true })
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(timeFormat.format(Date(selectedTimestamp)), fontSize = 12.sp, modifier = Modifier.clickable { showTimePicker = true })
+                    }
+                }
+            },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
@@ -367,17 +463,32 @@ fun AddTransactionDialog(
                 Button(onClick = {
                     val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
                         .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
-                    onAdd(totalBill, "Bill: ${items.size} items", items)
+                    onAdd(totalBill, "Bill: ${items.size} items", items, selectedTimestamp)
                 }) { Text("Finish Bill") }
             },
             dismissButton = {
-                TextButton(onClick = { isBillMode = false }) { Text("Back") }
+                TextButton(onClick = { 
+                    if (startInBillMode) onDismiss() else isBillMode = false 
+                }) { Text("Back") }
             }
         )
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text(if (isEdit) "Edit Entry" else (if (type == TransactionType.CREDIT) "Got Money" else "Gave Money")) },
+            title = {
+                Column {
+                    Text(if (isEdit) "Edit Entry" else (if (type == TransactionType.CREDIT) "Got Money" else "Gave Money"))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showDatePicker = true }) {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(dateFormat.format(Date(selectedTimestamp)), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp).clickable { showTimePicker = true })
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(timeFormat.format(Date(selectedTimestamp)), fontSize = 12.sp, modifier = Modifier.clickable { showTimePicker = true })
+                    }
+                }
+            },
             text = {
                 Column {
                     TextField(
@@ -398,7 +509,7 @@ fun AddTransactionDialog(
                 }
             },
             confirmButton = {
-                Button(onClick = { onAdd(amount.toDoubleOrNull() ?: 0.0, note, emptyList()) }) { Text("Save") }
+                Button(onClick = { onAdd(amount.toDoubleOrNull() ?: 0.0, note, emptyList(), selectedTimestamp) }) { Text("Save") }
             },
             dismissButton = {
                 TextButton(onClick = onDismiss) { Text("Cancel") }

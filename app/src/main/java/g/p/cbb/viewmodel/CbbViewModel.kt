@@ -5,17 +5,33 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import g.p.cbb.data.entity.*
 import g.p.cbb.repository.CbbRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import g.p.cbb.repository.SettingsRepository
+import g.p.cbb.repository.SortOption
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class CbbViewModel @Inject constructor(
-    private val repository: CbbRepository
+    private val repository: CbbRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    val customers = repository.getAllCustomers()
+    private val _sortOption = MutableStateFlow(settingsRepository.getSortOption())
+    val sortOption = _sortOption.asStateFlow()
+
+    val customers = combine(repository.getAllCustomers(), _sortOption) { customers, option ->
+        val active = customers.filter { !it.isBadDebt }.let { list ->
+            when (option) {
+                SortOption.NAME -> list.sortedBy { it.name }
+                SortOption.BALANCE_LOW_TO_HIGH -> list.sortedBy { it.totalBalance }
+                SortOption.BALANCE_HIGH_TO_LOW -> list.sortedByDescending { it.totalBalance }
+            }
+        }
+        val badDebt = customers.filter { it.isBadDebt }.sortedBy { it.name }
+        active + badDebt
+    }
+
     val activityLogs = repository.getActivityLogs()
 
     private val _selectedCustomer = MutableStateFlow<Customer?>(null)
@@ -60,7 +76,7 @@ class CbbViewModel @Inject constructor(
         }
     }
 
-    fun addTransaction(amount: Double, type: TransactionType, note: String, billItems: List<BillItem> = emptyList()) {
+    fun addTransaction(amount: Double, type: TransactionType, note: String, billItems: List<BillItem> = emptyList(), timestamp: Long = System.currentTimeMillis()) {
         val customer = _selectedCustomer.value ?: return
         viewModelScope.launch {
             repository.addTransaction(
@@ -68,7 +84,8 @@ class CbbViewModel @Inject constructor(
                     customerId = customer.id,
                     amount = amount,
                     type = type,
-                    note = note
+                    note = note,
+                    timestamp = timestamp
                 ),
                 billItems
             )
@@ -104,6 +121,21 @@ class CbbViewModel @Inject constructor(
     fun clearBillItems() {
         _selectedTransactionItems.value = emptyList()
         _selectedBillPayments.value = emptyList()
+    }
+
+    fun updateSortOption(option: SortOption) {
+        _sortOption.value = option
+        settingsRepository.saveSortOption(option)
+    }
+
+    fun restoreLatest(context: android.content.Context) {
+        viewModelScope.launch {
+            val error = repository.restoreLatestBackup(context)
+            if (error == null) {
+                // Try to refresh. Usually app needs restart but we try.
+                _selectedCustomer.value?.let { refreshCustomer(it.id) }
+            }
+        }
     }
 
     fun addPartPayment(billId: Long, amount: Double, note: String) {

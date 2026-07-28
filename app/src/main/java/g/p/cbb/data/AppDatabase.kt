@@ -14,7 +14,7 @@ import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import androidx.room.TypeConverter
 
-@Database(entities = [Customer::class, Transaction::class, BillItem::class, ActivityLog::class], version = 5, exportSchema = false)
+@Database(entities = [Customer::class, Transaction::class, BillItem::class, ActivityLog::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun customerDao(): CustomerDao

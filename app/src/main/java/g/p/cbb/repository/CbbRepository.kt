@@ -1,16 +1,19 @@
 package g.p.cbb.repository
 
+import g.p.cbb.data.AppDatabase
 import g.p.cbb.data.dao.ActivityLogDao
 import g.p.cbb.data.dao.BillItemDao
 import g.p.cbb.data.dao.CustomerDao
 import g.p.cbb.data.dao.TransactionDao
 import g.p.cbb.data.entity.*
+import g.p.cbb.utils.BackupManager
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class CbbRepository @Inject constructor(
+    private val database: AppDatabase,
     private val customerDao: CustomerDao,
     private val transactionDao: TransactionDao,
     private val billItemDao: BillItemDao,
@@ -105,6 +108,10 @@ class CbbRepository @Inject constructor(
 
     suspend fun getLinkedTransactions(parentId: Long): List<Transaction> =
         transactionDao.getLinkedTransactions(parentId)
+
+    suspend fun restoreLatestBackup(context: android.content.Context): String? {
+        return BackupManager.importLatestDatabase(context, database)
+    }
 
     fun getActivityLogs(): Flow<List<ActivityLog>> = activityLogDao.getAllLogs()
 

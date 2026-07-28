@@ -69,12 +69,13 @@ object PdfGenerator {
 
         pdfDocument.finishPage(page)
 
-        val fileName = "Ledger_${customer.name}_${System.currentTimeMillis()}.pdf"
-        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+        val fileName = "Statement_${customer.name}_${System.currentTimeMillis()}.pdf"
+        val statementFolder = StorageManager.getStatementFolder(context)
+        val file = File(statementFolder, fileName)
 
         try {
             pdfDocument.writeTo(FileOutputStream(file))
-            Toast.makeText(context, "PDF Saved: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Statement Saved in udaari/statements", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "Error generating PDF", Toast.LENGTH_SHORT).show()

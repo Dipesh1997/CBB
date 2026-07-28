@@ -8,6 +8,8 @@ import androidx.core.content.FileProvider
 import g.p.cbb.data.entity.BillItem
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.entity.Transaction
+import android.view.Gravity
+import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 
@@ -102,13 +104,25 @@ object ImageGenerator {
         canvas.drawText("Remaining Balance:", 40f, y, paint)
         canvas.drawText("₹${"%.2f".format(bill.amount - totalPaid)}", 480f, y, paint)
 
-        // Save and Share
-        val file = File(context.cacheDir, "bill_share.png")
-        FileOutputStream(file).use { out ->
+        // Save for Sharing
+        val cacheFile = File(context.cacheDir, "bill_share.png")
+        FileOutputStream(cacheFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
 
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        // Save permanent copy in udaari
+        val invoiceFolder = StorageManager.getInvoiceFolder(context)
+        val permFile = File(invoiceFolder, "Invoice_${customer.name}_${System.currentTimeMillis()}.png")
+        FileOutputStream(permFile).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
+        
+        val toast = Toast.makeText(context, "Bill Saved to gallery", Toast.LENGTH_SHORT)
+        toast.setGravity(Gravity.TOP, 0, 100)
+        toast.show()
+
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)

@@ -11,5 +11,6 @@ data class Customer(
     val phone: String,
     val address: String = "",
     val totalBalance: Double = 0.0, // Negative for Debit, Positive for Credit
-    val reminderTime: Long? = null
+    val reminderTime: Long? = null,
+    val isBadDebt: Boolean = false
 )
