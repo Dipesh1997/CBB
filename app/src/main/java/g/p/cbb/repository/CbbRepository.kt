@@ -51,14 +51,27 @@ class CbbRepository @Inject constructor(
     fun getTransactionsForCustomer(customerId: Long): Flow<List<Transaction>> =
         transactionDao.getTransactionsForCustomer(customerId)
 
-    suspend fun addTransaction(transaction: Transaction, billItems: List<BillItem> = emptyList(), timestamp: Long = System.currentTimeMillis()) {
-        val transactionId = transactionDao.insertTransaction(transaction)
+    suspend fun addTransaction(
+        transaction: Transaction, 
+        billItems: List<BillItem> = emptyList(), 
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        val transactionId = transactionDao.insertTransaction(transaction.copy(timestamp = timestamp))
         if (billItems.isNotEmpty()) {
             val itemsWithId = billItems.map { it.copy(transactionId = transactionId) }
             billItemDao.insertBillItems(itemsWithId)
             // Save suggestions
             billItems.forEach { item ->
-                productSuggestionDao.upsertSuggestion(ProductSuggestion(item.productName, item.price))
+                val shortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
+                val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
+                productSuggestionDao.upsertSuggestion(
+                    ProductSuggestion(
+                        name = item.productName, 
+                        lastPrice = item.price,
+                        shortcut = shortcut,
+                        units = units
+                    )
+                )
             }
         }
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
@@ -94,7 +107,16 @@ class CbbRepository @Inject constructor(
 
         // Save suggestions
         billItems.forEach { item ->
-            productSuggestionDao.upsertSuggestion(ProductSuggestion(item.productName, item.price))
+            val shortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
+            val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
+            productSuggestionDao.upsertSuggestion(
+                ProductSuggestion(
+                    name = item.productName, 
+                    lastPrice = item.price,
+                    shortcut = shortcut,
+                    units = units
+                )
+            )
         }
 
         val customer = customerDao.getCustomerById(newTransaction.customerId)
@@ -126,8 +148,8 @@ class CbbRepository @Inject constructor(
 
     fun getProductSuggestions(): Flow<List<ProductSuggestion>> = productSuggestionDao.getAllSuggestions()
 
-    suspend fun addProductSuggestion(name: String, price: Double) {
-        productSuggestionDao.upsertSuggestion(ProductSuggestion(name, price))
+    suspend fun addProductSuggestion(name: String, price: Double, shortcut: String? = null, units: String? = null) {
+        productSuggestionDao.upsertSuggestion(ProductSuggestion(name, price, shortcut, units))
     }
 
     suspend fun updateProductSuggestion(suggestion: ProductSuggestion) {

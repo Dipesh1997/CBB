@@ -7,5 +7,7 @@ import androidx.room.PrimaryKey
 data class ProductSuggestion(
     @PrimaryKey
     val name: String,
-    val lastPrice: Double
+    val lastPrice: Double,
+    val shortcut: String? = null,
+    val units: String? = null
 )

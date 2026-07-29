@@ -4,15 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.*
 import android.net.Uri
+import android.view.Gravity
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import g.p.cbb.data.entity.BillItem
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.entity.Transaction
-import android.view.Gravity
-import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
-
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -22,14 +21,19 @@ object ImageGenerator {
         customer: Customer,
         bill: Transaction,
         items: List<BillItem>,
-        payments: List<Transaction>
+        payments: List<Transaction>,
+        attachmentPath: String? = null
     ) {
         val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
         val totalPaid = payments.sumOf { it.amount }
         
         val width = 600
-        val height = 900 + (items.size * 40) + (payments.size * 40)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val baseHeight = 900
+        val itemsHeight = (items.size * 40)
+        val paymentsHeight = (payments.size * 40)
+        val totalHeight = baseHeight + itemsHeight + paymentsHeight
+        
+        val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint()
 
@@ -52,23 +56,31 @@ object ImageGenerator {
         canvas.drawText("Bill Date: ${dateFormat.format(Date(bill.timestamp))}", 40f, y, paint)
         y += 60f
         
-        paint.isFakeBoldText = true
-        canvas.drawText("Items", 40f, y, paint)
-        canvas.drawText("Price", 480f, y, paint)
-        y += 20f
-        canvas.drawLine(40f, y, 560f, y, paint)
-        y += 40f
-        
-        paint.isFakeBoldText = false
-        items.forEach { item ->
-            canvas.drawText(item.productName, 40f, y, paint)
-            canvas.drawText("₹${"%.2f".format(item.price)}", 480f, y, paint)
+        if (items.isNotEmpty()) {
+            paint.isFakeBoldText = true
+            canvas.drawText("Items", 40f, y, paint)
+            canvas.drawText("Price", 480f, y, paint)
+            y += 20f
+            canvas.drawLine(40f, y, 560f, y, paint)
             y += 40f
+            
+            paint.isFakeBoldText = false
+            items.forEach { item ->
+                canvas.drawText(item.productName, 40f, y, paint)
+                canvas.drawText("₹${"%.2f".format(item.price)}", 480f, y, paint)
+                y += 40f
+            }
+            y += 20f
+            canvas.drawLine(40f, y, 560f, y, paint)
+            y += 40f
+        } else if (bill.note.isNotEmpty()) {
+            paint.isFakeBoldText = true
+            canvas.drawText("Note:", 40f, y, paint)
+            y += 40f
+            paint.isFakeBoldText = false
+            canvas.drawText(bill.note, 40f, y, paint)
+            y += 60f
         }
-        
-        y += 20f
-        canvas.drawLine(40f, y, 560f, y, paint)
-        y += 40f
         
         paint.isFakeBoldText = true
         canvas.drawText("Total Bill Amount:", 40f, y, paint)
@@ -104,8 +116,8 @@ object ImageGenerator {
         canvas.drawText("Remaining Balance:", 40f, y, paint)
         canvas.drawText("₹${"%.2f".format(bill.amount - totalPaid)}", 480f, y, paint)
 
-        // Save for Sharing
-        val cacheFile = File(context.cacheDir, "bill_share.png")
+        // Save Summary Image
+        val cacheFile = File(context.cacheDir, "bill_summary.png")
         FileOutputStream(cacheFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
@@ -116,21 +128,34 @@ object ImageGenerator {
         FileOutputStream(permFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
-        
-        // Scan file so it shows up in gallery/file manager
         android.media.MediaScannerConnection.scanFile(context, arrayOf(permFile.absolutePath), null, null)
 
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
+        val summaryUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
         
+        val uris = arrayListOf<Uri>(summaryUri)
+        attachmentPath?.let { path ->
+            val attachFile = File(path)
+            if (attachFile.exists()) {
+                uris.add(FileProvider.getUriForFile(context, "${context.packageName}.provider", attachFile))
+            }
+        }
+
         val toast = Toast.makeText(context, "Bill Saved to gallery", Toast.LENGTH_SHORT)
         toast.setGravity(Gravity.TOP, 0, 100)
         toast.show()
 
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val intent = if (uris.size > 1) {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "image/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            }
+        } else {
+            Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, summaryUri)
+            }
         }
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.startActivity(Intent.createChooser(intent, "Share Bill"))
     }
 }

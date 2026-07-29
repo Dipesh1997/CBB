@@ -5,17 +5,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import g.p.cbb.data.entity.ProductSuggestion
 import g.p.cbb.ui.components.EmptyStateGuidance
 import g.p.cbb.viewmodel.CbbViewModel
@@ -53,6 +50,13 @@ fun ProductsScreen(viewModel: CbbViewModel) {
                     items(products) { product ->
                         ListItem(
                             headlineContent = { Text(product.name, fontWeight = FontWeight.SemiBold) },
+                            supportingContent = {
+                                val info = listOfNotNull(
+                                    product.shortcut?.let { "Shortcut: $it" },
+                                    product.units?.let { "Unit: $it" }
+                                ).joinToString(" • ")
+                                if (info.isNotEmpty()) Text(info)
+                            },
                             trailingContent = { 
                                 Text("₹${"%.2f".format(product.lastPrice)}", style = MaterialTheme.typography.titleMedium) 
                             },
@@ -69,8 +73,8 @@ fun ProductsScreen(viewModel: CbbViewModel) {
         ProductDialog(
             title = "Add Product",
             onDismiss = { showAddDialog = false },
-            onConfirm = { name, price ->
-                viewModel.addProduct(name, price)
+            onConfirm = { name, price, shortcut, units ->
+                viewModel.addProduct(name, price, shortcut, units)
                 showAddDialog = false
             }
         )
@@ -81,9 +85,11 @@ fun ProductsScreen(viewModel: CbbViewModel) {
             title = "Edit Product",
             initialName = product.name,
             initialPrice = product.lastPrice.toString(),
+            initialShortcut = product.shortcut ?: "",
+            initialUnits = product.units ?: "",
             onDismiss = { productToEdit = null },
-            onConfirm = { name, price ->
-                viewModel.updateProduct(ProductSuggestion(name, price))
+            onConfirm = { name, price, shortcut, units ->
+                viewModel.updateProduct(product.copy(name = name, lastPrice = price, shortcut = shortcut, units = units))
                 productToEdit = null
             },
             showDelete = true,
@@ -100,13 +106,17 @@ fun ProductDialog(
     title: String,
     initialName: String = "",
     initialPrice: String = "",
+    initialShortcut: String = "",
+    initialUnits: String = "",
     onDismiss: () -> Unit,
-    onConfirm: (String, Double) -> Unit,
+    onConfirm: (String, Double, String?, String?) -> Unit,
     showDelete: Boolean = false,
     onDelete: () -> Unit = {}
 ) {
     var name by remember { mutableStateOf(initialName) }
     var price by remember { mutableStateOf(initialPrice) }
+    var shortcut by remember { mutableStateOf(initialShortcut) }
+    var units by remember { mutableStateOf(initialUnits) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -125,10 +135,29 @@ fun ProductDialog(
                     label = { Text("Standard Price") },
                     leadingIcon = { Icon(Icons.Default.Payments, null) }
                 )
+                TextField(
+                    value = shortcut,
+                    onValueChange = { shortcut = it },
+                    label = { Text("Shortcut (Optional)") },
+                    leadingIcon = { Icon(Icons.Default.Star, null) }
+                )
+                TextField(
+                    value = units,
+                    onValueChange = { units = it },
+                    label = { Text("Default Unit (e.g., 1 Litre)") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, null) }
+                )
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name, price.toDoubleOrNull() ?: 0.0) }) { Text("Save") }
+            Button(onClick = { 
+                onConfirm(
+                    name, 
+                    price.toDoubleOrNull() ?: 0.0, 
+                    shortcut.ifBlank { null }, 
+                    units.ifBlank { null }
+                ) 
+            }) { Text("Save") }
         },
         dismissButton = {
             Row {

@@ -84,7 +84,14 @@ class CbbViewModel @Inject constructor(
         }
     }
 
-    fun addTransaction(amount: Double, type: TransactionType, note: String, billItems: List<BillItem> = emptyList(), timestamp: Long = System.currentTimeMillis()) {
+    fun addTransaction(
+        amount: Double, 
+        type: TransactionType, 
+        note: String, 
+        billItems: List<BillItem> = emptyList(), 
+        timestamp: Long = System.currentTimeMillis(),
+        attachmentPath: String? = null
+    ) {
         val customer = _selectedCustomer.value ?: return
         viewModelScope.launch {
             repository.addTransaction(
@@ -93,9 +100,11 @@ class CbbViewModel @Inject constructor(
                     amount = amount,
                     type = type,
                     note = note,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    attachmentPath = attachmentPath
                 ),
-                billItems
+                billItems,
+                timestamp
             )
             refreshCustomer(customer.id)
         }
@@ -136,9 +145,9 @@ class CbbViewModel @Inject constructor(
         settingsRepository.saveSortOption(option)
     }
 
-    fun addProduct(name: String, price: Double) {
+    fun addProduct(name: String, price: Double, shortcut: String? = null, units: String? = null) {
         viewModelScope.launch {
-            repository.addProductSuggestion(name, price)
+            repository.addProductSuggestion(name, price, shortcut, units)
         }
     }
 

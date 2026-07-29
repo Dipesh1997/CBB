@@ -9,6 +9,7 @@ object StorageManager {
     private const val BACKUP_FOLDER = "backups"
     private const val STATEMENT_FOLDER = "statements"
     private const val INVOICE_FOLDER = "invoices"
+    private const val ATTACHMENT_FOLDER = "attachments"
 
     fun getUdaariRoot(context: Context): File {
         val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
@@ -23,6 +24,7 @@ object StorageManager {
     fun getBackupFolder(context: Context): File = getSubFolder(context, BACKUP_FOLDER)
     fun getStatementFolder(context: Context): File = getSubFolder(context, STATEMENT_FOLDER)
     fun getInvoiceFolder(context: Context): File = getSubFolder(context, INVOICE_FOLDER)
+    fun getAttachmentFolder(context: Context): File = getSubFolder(context, ATTACHMENT_FOLDER)
 
     private fun getSubFolder(context: Context, name: String): File {
         val root = getUdaariRoot(context)
