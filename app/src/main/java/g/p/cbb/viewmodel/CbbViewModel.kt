@@ -54,6 +54,45 @@ class CbbViewModel @Inject constructor(
     private val _selectedBillPayments = MutableStateFlow<List<Transaction>>(emptyList())
     val selectedBillPayments = _selectedBillPayments.asStateFlow()
 
+    // Multi-Selection State
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode = _isSelectionMode.asStateFlow()
+
+    private val _selectedTransactionIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedTransactionIds = _selectedTransactionIds.asStateFlow()
+
+    fun toggleSelectionMode(enabled: Boolean) {
+        _isSelectionMode.value = enabled
+        if (!enabled) _selectedTransactionIds.value = emptySet()
+    }
+
+    fun toggleTransactionSelection(id: Long) {
+        val current = _selectedTransactionIds.value.toMutableSet()
+        if (current.contains(id)) current.remove(id) else current.add(id)
+        _selectedTransactionIds.value = current
+    }
+
+    suspend fun getTransactionsWithDetails(ids: List<Long>): List<g.p.cbb.data.model.TransactionWithDetails> {
+        val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
+        ids.forEach { id ->
+            val transaction = transactions.value.find { it.id == id }
+            if (transaction != null) {
+                val items = repository.getBillItemsForTransaction(id)
+                list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, items))
+            }
+        }
+        return list.sortedByDescending { it.transaction.timestamp }
+    }
+
+    suspend fun getAllTransactionsWithDetails(): List<g.p.cbb.data.model.TransactionWithDetails> {
+        val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
+        transactions.value.forEach { transaction ->
+            val items = repository.getBillItemsForTransaction(transaction.id)
+            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, items))
+        }
+        return list.sortedByDescending { it.transaction.timestamp }
+    }
+
     fun selectCustomer(customer: Customer) {
         _selectedCustomer.value = customer
         viewModelScope.launch {

@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
@@ -33,29 +36,38 @@ import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.ui.components.EmptyStateGuidance
 import g.p.cbb.ui.components.FullScreenImageViewer
+import g.p.cbb.ui.components.PdfViewer
 import g.p.cbb.utils.*
 import g.p.cbb.viewmodel.CbbViewModel
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     val customer by viewModel.selectedCustomer.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
+    val isSelectionMode by viewModel.isSelectionMode.collectAsState()
+    val selectedIds by viewModel.selectedTransactionIds.collectAsState()
+
     var showAddTransactionDialog by remember { mutableStateOf<TransactionType?>(null) }
     var startInBillMode by remember { mutableStateOf(false) }
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var selectedTransactionIdForDetails by remember { mutableStateOf<Long?>(null) }
     var showReminderDialog by remember { mutableStateOf(false) }
     var showPartPaymentDialog by remember { mutableStateOf<Long?>(null) }
+    var showExportOptions by remember { mutableStateOf(false) }
+    var showPdfList by remember { mutableStateOf(false) }
+    var viewPdfFile by remember { mutableStateOf<File?>(null) }
     
     var capturedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var showQuickCameraDialog by remember { mutableStateOf<android.net.Uri?>(null) }
     var fullScreenImagePath by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -76,7 +88,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             val tempFile = File(context.cacheDir, "camera_temp.jpg")
@@ -108,6 +120,11 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                             }) {
                                 Icon(Icons.Default.Settings, contentDescription = "Set Reminder")
                             }
+                            if (isSelectionMode) {
+                                IconButton(onClick = { viewModel.toggleSelectionMode(false) }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Exit Selection")
+                                }
+                            }
                         }
                     },
                     navigationIcon = {
@@ -116,36 +133,62 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         }
                     },
                     actions = {
-                        IconButton(onClick = {
-                            PdfGenerator.generateCustomerLedger(context, currCustomer, transactions)
-                        }) {
+                        IconButton(onClick = { showPdfList = true }) {
+                            Icon(Icons.Default.Download, contentDescription = "View Exported PDFs")
+                        }
+                        IconButton(onClick = { showExportOptions = true }) {
                             Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
                         }
                     }
                 )
             },
+            bottomBar = {
+                if (isSelectionMode) {
+                    BottomAppBar(
+                        actions = {
+                            Text("${selectedIds.size} Selected", modifier = Modifier.padding(start = 16.dp))
+                        },
+                        floatingActionButton = {
+                            FloatingActionButton(
+                                onClick = {
+                                    scope.launch {
+                                        val details = viewModel.getTransactionsWithDetails(selectedIds.toList())
+                                        PdfGenerator.generateCustomerLedger(context, currCustomer, details, PdfDetailLevel.DETAILED)
+                                        viewModel.toggleSelectionMode(false)
+                                    }
+                                },
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = "Generate PDF")
+                            }
+                        }
+                    )
+                }
+            },
             floatingActionButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    FloatingActionButton(
-                        onClick = {
-                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    ) {
-                        Icon(Icons.Default.PhotoCamera, contentDescription = "Quick Bill (Camera)")
-                    }
+                if (!isSelectionMode) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        FloatingActionButton(
+                            onClick = {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = "Quick Bill (Camera)")
+                        }
 
-                    FloatingActionButton(
-                        onClick = {
-                            startInBillMode = true
-                            showAddTransactionDialog = TransactionType.DEBIT
-                        },
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "Create Bill")
+                        FloatingActionButton(
+                            onClick = {
+                                startInBillMode = true
+                                showAddTransactionDialog = TransactionType.DEBIT
+                            },
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "Create Bill")
+                        }
                     }
                 }
             }
@@ -241,10 +284,25 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(transactions) { transaction ->
-                            TransactionItem(transaction, onClick = {
-                                selectedTransactionIdForDetails = transaction.id
-                                viewModel.fetchBillItems(transaction.id)
-                            })
+                            TransactionItem(
+                                transaction = transaction,
+                                isSelected = selectedIds.contains(transaction.id),
+                                isSelectionMode = isSelectionMode,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        viewModel.toggleTransactionSelection(transaction.id)
+                                    } else {
+                                        selectedTransactionIdForDetails = transaction.id
+                                        viewModel.fetchBillItems(transaction.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isSelectionMode) {
+                                        viewModel.toggleSelectionMode(true)
+                                        viewModel.toggleTransactionSelection(transaction.id)
+                                    }
+                                }
+                            )
                             HorizontalDivider()
                         }
                     }
@@ -389,6 +447,80 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
         )
     }
 
+    if (showExportOptions) {
+        ExportOptionsDialog(
+            onDismiss = { showExportOptions = false },
+            onOptionSelected = { option, start, end ->
+                showExportOptions = false
+                val correctedEnd = if (option == "Date") end + (24 * 60 * 60 * 1000L) - 1 else end
+                scope.launch {
+                    customer?.let { currCust ->
+                        val details = when (option) {
+                            "Full" -> viewModel.getAllTransactionsWithDetails()
+                            "Medium" -> transactions.map { g.p.cbb.data.model.TransactionWithDetails(it) }
+                            "Date" -> {
+                                val filtered = transactions.filter { it.timestamp in start..correctedEnd }
+                                viewModel.getTransactionsWithDetails(filtered.map { it.id })
+                            }
+                            else -> emptyList()
+                        }
+                        
+                        if (option == "Selected") {
+                            viewModel.toggleSelectionMode(true)
+                        } else if (details.isNotEmpty()) {
+                            val level = if (option == "Medium") PdfDetailLevel.SUMMARY else PdfDetailLevel.DETAILED
+                            PdfGenerator.generateCustomerLedger(context, currCust, details, level)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showPdfList) {
+        val currentCustomer = customer
+        if (currentCustomer != null) {
+            CustomerPdfListDialog(
+                customerName = currentCustomer.name,
+                onDismiss = { showPdfList = false },
+                onViewPdf = { file ->
+                    viewPdfFile = file
+                    showPdfList = false
+                }
+            )
+        }
+    }
+
+    viewPdfFile?.let { file ->
+        PdfViewer(
+            file = file,
+            onDismiss = { 
+                viewPdfFile = null
+                showPdfList = true // Go back to list
+            },
+            onShare = {
+                try {
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share Statement"))
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "Sharing failed", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDelete = {
+                if (file.delete()) {
+                    android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+                    viewPdfFile = null
+                    showPdfList = true // Refresh list
+                }
+            }
+        )
+    }
+
     fullScreenImagePath?.let { path ->
         FullScreenImageViewer(
             imagePath = path,
@@ -407,8 +539,15 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     }
 }
 
+@androidx.compose.foundation.ExperimentalFoundationApi
 @Composable
-fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
+fun TransactionItem(
+    transaction: Transaction, 
+    isSelected: Boolean = false,
+    isSelectionMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
     ListItem(
         headlineContent = { 
@@ -425,6 +564,11 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
                 }
             }
         },
+        leadingContent = {
+            if (isSelectionMode) {
+                Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+            }
+        },
         trailingContent = {
             Text(
                 "₹${"%.2f".format(transaction.amount)}",
@@ -433,7 +577,10 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
                 fontSize = 16.sp
             )
         },
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
     )
 }
 
@@ -499,13 +646,19 @@ fun AddTransactionDialog(
         recognizer = VoiceRecognizer(
             context = context,
             onResult = { text ->
+                // 1. Normalize number words to digits
                 val normalizedText = TextNormalizer.normalize(text)
+                
+                // 2. Identify commands "next" and "done"
+                // Split by keywords while keeping track of them
                 val segments = normalizedText.split("(?i)\\b(next|done)\\b".toRegex())
                 val commands = "(?i)\\b(next|done)\\b".toRegex().findAll(normalizedText).map { it.value.lowercase() }.toList()
                 
                 segments.forEachIndexed { index, segment ->
                     val productPhrase = segment.trim()
+                    
                     if (productPhrase.isNotEmpty()) {
+                        // Check for "last [number]" command
                         val lastMatch = "(?i)\\blast\\s+(\\d+|one|two|three|four|five|six|seven|eight|nine|ten)\\b".toRegex().find(productPhrase)
                         if (lastMatch != null) {
                             val qtyText = lastMatch.groupValues[1]
@@ -516,11 +669,15 @@ fun AddTransactionDialog(
                                     else -> 1
                                 }
                             }
+                            
                             val lastIndex = billItems.size - 1
                             if (lastIndex >= 0) {
                                 val currentItemName = billItems[lastIndex].first
                                 val currentItemPrice = billItems[lastIndex].second.toDoubleOrNull() ?: 0.0
+                                
+                                // Find base suggestion for units and base price
                                 val suggestion = suggestions.find { it.name.equals(currentItemName, ignoreCase = true) }
+                                
                                 val (newName, newPrice) = ProductParser.applyQuantity(
                                     currentName = currentItemName,
                                     currentPrice = currentItemPrice,
@@ -531,8 +688,10 @@ fun AddTransactionDialog(
                                 billItems[lastIndex] = newName to newPrice.toString()
                             }
                         } else {
+                            // Match with suggestions based on shortcut FIRST, then full name
                             val matched = suggestions.find { it.shortcut.equals(productPhrase, ignoreCase = true) }
                                 ?: suggestions.find { it.name.equals(productPhrase, ignoreCase = true) }
+                            
                             matched?.let { m ->
                                 val lastIndex = billItems.size - 1
                                 if (lastIndex >= 0) {
@@ -541,10 +700,14 @@ fun AddTransactionDialog(
                             }
                         }
                     }
+                    
+                    // Handle command if one exists for this segment
                     if (index < commands.size) {
                         val cmd = commands[index]
                         if (cmd == "next") {
-                            if (billItems.last().first.isNotEmpty()) billItems.add("" to "")
+                            if (billItems.last().first.isNotEmpty()) {
+                                billItems.add("" to "")
+                            }
                         } else if (cmd == "done") {
                             recognizer.stopListening()
                             val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
@@ -567,7 +730,9 @@ fun AddTransactionDialog(
     val voicePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) voiceRecognizer.startListening()
+        if (isGranted) {
+            voiceRecognizer.startListening()
+        }
     }
 
     if (showDatePicker) {
@@ -640,6 +805,7 @@ fun AddTransactionDialog(
                                         leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
                                         modifier = Modifier.fillMaxWidth()
                                     )
+                                    
                                     val filteredSuggestions = suggestions.filter { 
                                         it.name.contains(billItems[index].first, ignoreCase = true) && 
                                         it.name != billItems[index].first
@@ -673,10 +839,14 @@ fun AddTransactionDialog(
                             Icon(Icons.Default.Add, contentDescription = null)
                             Text("New Line")
                         }
+                        
                         IconButton(
                             onClick = {
-                                if (isListening) voiceRecognizer.stopListening()
-                                else voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                if (isListening) {
+                                    voiceRecognizer.stopListening()
+                                } else {
+                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
                         ) {
                             Icon(
@@ -698,7 +868,9 @@ fun AddTransactionDialog(
                 }) { Text("Finish Bill") }
             },
             dismissButton = {
-                TextButton(onClick = { if (startInBillMode) onDismiss() else isBillMode = false }) { Text("Back") }
+                TextButton(onClick = { 
+                    if (startInBillMode) onDismiss() else isBillMode = false 
+                }) { Text("Back") }
             }
         )
     } else {
@@ -840,8 +1012,10 @@ fun BillDetailsDialog(
                             HorizontalDivider()
                         }
                     }
+                    
                     val totalBill = billItems.sumOf { it.price }
                     val totalReceived = linkedPayments.sumOf { it.amount }
+                    
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Total Bill: ₹${"%.2f".format(totalBill)}", fontSize = 14.sp)
                     Text("Total Received: ₹${"%.2f".format(totalReceived)}", fontSize = 14.sp, color = Color(0xFF4CAF50))
@@ -908,8 +1082,10 @@ fun PartPaymentDialog(onDismiss: () -> Unit, onConfirm: (Double, String) -> Unit
 fun ReminderDialog(customerName: String, onDismiss: () -> Unit, onSchedule: (Long) -> Unit) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    
     val datePickerState = rememberDatePickerState()
     val timePickerState = rememberTimePickerState()
+    
     val selectedDate = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
     val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(selectedDate))
     val timeStr = "${"%02d".format(timePickerState.hour)}:${"%02d".format(timePickerState.minute)}"
@@ -920,7 +1096,9 @@ fun ReminderDialog(customerName: String, onDismiss: () -> Unit, onSchedule: (Lon
             confirmButton = {
                 TextButton(onClick = { showDatePicker = false }) { Text("OK") }
             }
-        ) { DatePicker(state = datePickerState) }
+        ) {
+            DatePicker(state = datePickerState)
+        }
     }
 
     if (showTimePicker) {
@@ -979,4 +1157,136 @@ fun ReminderDialog(customerName: String, onDismiss: () -> Unit, onSchedule: (Lon
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomerPdfListDialog(
+    customerName: String,
+    onDismiss: () -> Unit,
+    onViewPdf: (File) -> Unit
+) {
+    val context = LocalContext.current
+    val pdfFiles = remember {
+        val folder = StorageManager.getStatementFolder(context)
+        folder.listFiles { file -> 
+            file.name.startsWith("Statement_$customerName", ignoreCase = true) && file.name.endsWith(".pdf")
+        }?.sortedByDescending { it.lastModified() } ?: emptyList()
+    }
+    val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Exported PDFs for $customerName") },
+        text = {
+            if (pdfFiles.isEmpty()) {
+                Text("No exported PDFs found for this customer.")
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    items(pdfFiles) { file ->
+                        ListItem(
+                            headlineContent = { Text(file.name, style = MaterialTheme.typography.bodySmall) },
+                            supportingContent = { 
+                                val size = file.length() / 1024
+                                Text("${dateFormat.format(Date(file.lastModified()))} • ${size}KB")
+                            },
+                            leadingContent = { Icon(Icons.Default.PictureAsPdf, null, tint = Color.Red) },
+                            modifier = Modifier.clickable { onViewPdf(file) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExportOptionsDialog(
+    onDismiss: () -> Unit,
+    onOptionSelected: (String, Long, Long) -> Unit
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+    val dateRangePickerState = rememberDateRangePickerState()
+
+    if (showDatePicker) {
+        DateRangePickerDialog(
+            state = dateRangePickerState,
+            onDismiss = { showDatePicker = false },
+            onConfirm = {
+                val start = dateRangePickerState.selectedStartDateMillis ?: 0L
+                val end = dateRangePickerState.selectedEndDateMillis ?: System.currentTimeMillis()
+                onOptionSelected("Date", start, end)
+                showDatePicker = false
+            }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Export PDF Options") },
+        text = {
+            Column {
+                ListItem(
+                    headlineContent = { Text("Full Details") },
+                    supportingContent = { Text("All bills with items and photos") },
+                    leadingContent = { Icon(Icons.Default.Description, null) },
+                    modifier = Modifier.clickable { onOptionSelected("Full", 0, 0) }
+                )
+                ListItem(
+                    headlineContent = { Text("Medium (Summary)") },
+                    supportingContent = { Text("Simple table of all transactions") },
+                    leadingContent = { Icon(Icons.Default.TableChart, null) },
+                    modifier = Modifier.clickable { onOptionSelected("Medium", 0, 0) }
+                )
+                ListItem(
+                    headlineContent = { Text("Selected Bills") },
+                    supportingContent = { Text("Pick specific bills from your ledger") },
+                    leadingContent = { Icon(Icons.Default.LibraryAddCheck, null) },
+                    modifier = Modifier.clickable { onOptionSelected("Selected", 0, 0) }
+                )
+                ListItem(
+                    headlineContent = { Text("Date Range") },
+                    supportingContent = { Text("Export detailed bills for specific dates") },
+                    leadingContent = { Icon(Icons.Default.DateRange, null) },
+                    modifier = Modifier.clickable { showDatePicker = true }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DateRangePickerDialog(
+    state: DateRangePickerState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Select Dates") },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null) }
+                    },
+                    actions = {
+                        TextButton(onClick = onConfirm) { Text("Apply") }
+                    }
+                )
+            }
+        ) { padding ->
+            DateRangePicker(state = state, modifier = Modifier.padding(padding))
+        }
+    }
 }
