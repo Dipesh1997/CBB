@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.*
 import android.net.Uri
+import android.util.Log
 import android.view.Gravity
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -37,10 +38,16 @@ object ImageGenerator {
         val canvas = Canvas(bitmap)
         val paint = Paint()
 
-        // Background
+        // Background and Border
         canvas.drawColor(Color.WHITE)
+        val borderPaint = Paint().apply {
+            color = Color.LTGRAY
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        canvas.drawRect(10f, 10f, width - 10f, totalHeight - 10f, borderPaint)
 
-        var y = 60f
+        var y = 80f
         paint.color = Color.BLACK
         paint.textSize = 32f
         paint.isFakeBoldText = true
@@ -73,13 +80,34 @@ object ImageGenerator {
             y += 20f
             canvas.drawLine(40f, y, 560f, y, paint)
             y += 40f
-        } else if (bill.note.isNotEmpty()) {
+        } else {
+            // Prominent Lumpsum text
+            paint.color = Color.parseColor("#3F51B5")
             paint.isFakeBoldText = true
-            canvas.drawText("Note:", 40f, y, paint)
+            paint.textSize = 28f
+            canvas.drawText("LUMPSUM TRANSACTION", 40f, y, paint)
             y += 40f
-            paint.isFakeBoldText = false
-            canvas.drawText(bill.note, 40f, y, paint)
-            y += 60f
+            
+            paint.color = Color.BLACK
+            paint.textSize = 32f
+            canvas.drawText("Amount: ₹${"%.2f".format(bill.amount)}", 40f, y, paint)
+            y += 45f
+            
+            if (bill.note.isNotEmpty()) {
+                paint.textSize = 24f
+                paint.isFakeBoldText = false
+                canvas.drawText("Note: ${bill.note}", 40f, y, paint)
+                y += 40f
+            }
+            
+            if (attachmentPath != null) {
+                paint.color = Color.GRAY
+                paint.textSize = 20f
+                canvas.drawText("(Photo Attachment Included)", 40f, y, paint)
+                y += 40f
+            }
+            y += 10f
+            paint.color = Color.BLACK
         }
         
         paint.isFakeBoldText = true
@@ -115,7 +143,7 @@ object ImageGenerator {
         paint.color = Color.parseColor("#F44336")
         canvas.drawText("Remaining Balance:", 40f, y, paint)
         canvas.drawText("₹${"%.2f".format(bill.amount - totalPaid)}", 480f, y, paint)
-
+        
         // Save Summary Image
         val cacheFile = File(context.cacheDir, "bill_summary.png")
         FileOutputStream(cacheFile).use { out ->
@@ -130,32 +158,41 @@ object ImageGenerator {
         }
         android.media.MediaScannerConnection.scanFile(context, arrayOf(permFile.absolutePath), null, null)
 
-        val summaryUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
-        
-        val uris = arrayListOf<Uri>(summaryUri)
-        attachmentPath?.let { path ->
-            val attachFile = File(path)
-            if (attachFile.exists()) {
-                uris.add(FileProvider.getUriForFile(context, "${context.packageName}.provider", attachFile))
+        try {
+            val summaryUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
+            
+            val uris = arrayListOf<Uri>(summaryUri)
+            attachmentPath?.let { path ->
+                val attachFile = File(path)
+                if (attachFile.exists()) {
+                    try {
+                        uris.add(FileProvider.getUriForFile(context, "${context.packageName}.provider", attachFile))
+                    } catch (e: Exception) {
+                        Log.e("ImageGenerator", "Error getting URI for attachment: ${e.message}")
+                    }
+                }
             }
-        }
 
-        val toast = Toast.makeText(context, "Bill Saved to gallery", Toast.LENGTH_SHORT)
-        toast.setGravity(Gravity.TOP, 0, 100)
-        toast.show()
+            val toast = Toast.makeText(context, "Bill Saved to gallery", Toast.LENGTH_SHORT)
+            toast.setGravity(Gravity.TOP, 0, 100)
+            toast.show()
 
-        val intent = if (uris.size > 1) {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "image/*"
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            val intent = if (uris.size > 1) {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "image/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                }
+            } else {
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, summaryUri)
+                }
             }
-        } else {
-            Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, summaryUri)
-            }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, "Share Bill"))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Sharing failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(intent, "Share Bill"))
     }
 }

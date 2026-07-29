@@ -32,6 +32,7 @@ import g.p.cbb.data.entity.ProductSuggestion
 import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.ui.components.EmptyStateGuidance
+import g.p.cbb.ui.components.FullScreenImageViewer
 import g.p.cbb.utils.*
 import g.p.cbb.viewmodel.CbbViewModel
 import java.io.File
@@ -53,6 +54,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     
     var capturedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var showQuickCameraDialog by remember { mutableStateOf<android.net.Uri?>(null) }
+    var fullScreenImagePath by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -380,7 +382,17 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         )
                     }
                 }
+            },
+            onImageClick = { path ->
+                fullScreenImagePath = path
             }
+        )
+    }
+
+    fullScreenImagePath?.let { path ->
+        FullScreenImageViewer(
+            imagePath = path,
+            onDismiss = { fullScreenImagePath = null }
         )
     }
 
@@ -781,7 +793,8 @@ fun BillDetailsDialog(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onRecordPayment: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onImageClick: (String) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -805,6 +818,7 @@ fun BillDetailsDialog(
                             .fillMaxWidth()
                             .height(200.dp)
                             .clip(MaterialTheme.shapes.medium)
+                            .clickable { onImageClick(transaction.attachmentPath) }
                             .padding(bottom = 16.dp),
                         contentScale = ContentScale.Fit
                     )
