@@ -184,15 +184,17 @@ class CbbViewModel @Inject constructor(
         settingsRepository.saveSortOption(option)
     }
 
-    fun addProduct(name: String, price: Double, shortcut: String? = null, units: String? = null) {
+    fun addProduct(name: String, price: Double, shortcut: String? = null, units: String? = null, onResult: (String?) -> Unit = {}) {
         viewModelScope.launch {
-            repository.addProductSuggestion(name, price, shortcut, units)
+            val error = repository.addProductSuggestion(name, price, shortcut, units)
+            onResult(error)
         }
     }
 
-    fun updateProduct(suggestion: ProductSuggestion) {
+    fun updateProduct(suggestion: ProductSuggestion, onResult: (String?) -> Unit = {}) {
         viewModelScope.launch {
-            repository.updateProductSuggestion(suggestion)
+            val error = repository.updateProductSuggestion(suggestion)
+            onResult(error)
         }
     }
 

@@ -134,7 +134,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                     },
                     actions = {
                         IconButton(onClick = { showPdfList = true }) {
-                            Icon(Icons.Default.Download, contentDescription = "View Exported PDFs")
+                            Icon(Icons.Default.DownloadForOffline, contentDescription = "View Exported PDFs")
                         }
                         IconButton(onClick = { showExportOptions = true }) {
                             Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
@@ -452,14 +452,34 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
             onDismiss = { showExportOptions = false },
             onOptionSelected = { option, start, end ->
                 showExportOptions = false
-                val correctedEnd = if (option == "Date") end + (24 * 60 * 60 * 1000L) - 1 else end
+                
+                // Fix: Material 3 DateRangePicker provides UTC timestamps.
+                // We need to convert these to Local Midnight.
+                val localStart = if (option == "Date") {
+                    Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = start }.let {
+                        Calendar.getInstance().apply {
+                            set(it.get(Calendar.YEAR), it.get(Calendar.MONTH), it.get(Calendar.DATE), 0, 0, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                    }
+                } else start
+
+                val localEnd = if (option == "Date") {
+                    Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = end }.let {
+                        Calendar.getInstance().apply {
+                            set(it.get(Calendar.YEAR), it.get(Calendar.MONTH), it.get(Calendar.DATE), 23, 59, 59)
+                            set(Calendar.MILLISECOND, 999)
+                        }.timeInMillis
+                    }
+                } else end
+
                 scope.launch {
                     customer?.let { currCust ->
                         val details = when (option) {
                             "Full" -> viewModel.getAllTransactionsWithDetails()
                             "Medium" -> transactions.map { g.p.cbb.data.model.TransactionWithDetails(it) }
                             "Date" -> {
-                                val filtered = transactions.filter { it.timestamp in start..correctedEnd }
+                                val filtered = transactions.filter { it.timestamp in localStart..localEnd }
                                 viewModel.getTransactionsWithDetails(filtered.map { it.id })
                             }
                             else -> emptyList()
@@ -610,6 +630,7 @@ fun AddTransactionDialog(
     
     var attachmentPath by remember { mutableStateOf(initialAttachmentPath) }
     var attachmentUri by remember { mutableStateOf(initialAttachmentUri) }
+    var showReplacePhotoConfirm by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
 
@@ -657,49 +678,56 @@ fun AddTransactionDialog(
                 segments.forEachIndexed { index, segment ->
                     val productPhrase = segment.trim()
                     
-                    if (productPhrase.isNotEmpty()) {
-                        // Check for "last [number]" command
-                        val lastMatch = "(?i)\\blast\\s+(\\d+|one|two|three|four|five|six|seven|eight|nine|ten)\\b".toRegex().find(productPhrase)
-                        if (lastMatch != null) {
-                            val qtyText = lastMatch.groupValues[1]
-                            val qty = if (qtyText.any { it.isDigit() }) qtyText.toInt() else {
-                                when(qtyText.lowercase()) {
-                                    "one" -> 1; "two" -> 2; "three" -> 3; "four" -> 4; "five" -> 5
-                                    "six" -> 6; "seven" -> 7; "eight" -> 8; "nine" -> 9; "ten" -> 10
-                                    else -> 1
+                            if (productPhrase.isNotEmpty()) {
+                                // Check for "last [number]" command
+                                val lastMatch = "(?i)\\blast\\s+(\\d+|one|two|three|four|for|five|six|seven|eight|nine|ten)\\b".toRegex().find(productPhrase)
+                                if (lastMatch != null) {
+                                    val qtyText = lastMatch.groupValues[1]
+                                    val qty = if (qtyText.any { it.isDigit() }) qtyText.toInt() else {
+                                        when(qtyText.lowercase()) {
+                                            "one" -> 1; "two" -> 2; "three" -> 3; "four" -> 4; "for" -> 4; "five" -> 5
+                                            "six" -> 6; "seven" -> 7; "eight" -> 8; "nine" -> 9; "ten" -> 10
+                                            else -> 1
+                                        }
+                                    }
+                                    
+                                    val lastIndex = billItems.size - 1
+                                    if (lastIndex >= 0) {
+                                        val currentItemName = billItems[lastIndex].first
+                                        val currentItemPrice = billItems[lastIndex].second.toDoubleOrNull() ?: 0.0
+                                        
+                                        // Find base suggestion even if current item was already multiplied
+                                        // We look for a suggestion whose name (without digits) matches the current name (without digits)
+                                        val currentNameClean = currentItemName.replace("\\d+".toRegex(), "").trim()
+                                        val suggestion = suggestions.find { s ->
+                                            val sNameClean = s.name.replace("\\d+".toRegex(), "").trim()
+                                            sNameClean.equals(currentNameClean, ignoreCase = true)
+                                        } ?: suggestions.find { it.name.equals(currentItemName, ignoreCase = true) }
+                                        
+                                        val (newName, newPrice) = ProductParser.applyQuantity(
+                                            currentName = currentItemName,
+                                            currentPrice = currentItemPrice,
+                                            newQuantity = qty,
+                                            units = suggestion?.units,
+                                            basePrice = suggestion?.lastPrice ?: currentItemPrice,
+                                            baseName = suggestion?.name ?: currentItemName
+                                        )
+                                        billItems[lastIndex] = newName to newPrice.toString()
+                                    }
+                                } else {
+                                    // Optimization: Prioritize Exact Name match FIRST, then Shortcut
+                                    val matched = suggestions.find { it.name.equals(productPhrase, ignoreCase = true) }
+                                        ?: suggestions.find { it.shortcut.equals(productPhrase, ignoreCase = true) }
+                                    
+                                    matched?.let { m ->
+                                        val lastIndex = billItems.size - 1
+                                        if (lastIndex >= 0) {
+                                            val formattedName = ProductParser.getFormattedName(m.name, m.units)
+                                            billItems[lastIndex] = formattedName to m.lastPrice.toString()
+                                        }
+                                    }
                                 }
                             }
-                            
-                            val lastIndex = billItems.size - 1
-                            if (lastIndex >= 0) {
-                                val currentItemName = billItems[lastIndex].first
-                                val currentItemPrice = billItems[lastIndex].second.toDoubleOrNull() ?: 0.0
-                                
-                                // Find base suggestion for units and base price
-                                val suggestion = suggestions.find { it.name.equals(currentItemName, ignoreCase = true) }
-                                
-                                val (newName, newPrice) = ProductParser.applyQuantity(
-                                    currentName = currentItemName,
-                                    currentPrice = currentItemPrice,
-                                    newQuantity = qty,
-                                    units = suggestion?.units,
-                                    basePrice = suggestion?.lastPrice ?: currentItemPrice
-                                )
-                                billItems[lastIndex] = newName to newPrice.toString()
-                            }
-                        } else {
-                            // Match with suggestions based on shortcut FIRST, then full name
-                            val matched = suggestions.find { it.shortcut.equals(productPhrase, ignoreCase = true) }
-                                ?: suggestions.find { it.name.equals(productPhrase, ignoreCase = true) }
-                            
-                            matched?.let { m ->
-                                val lastIndex = billItems.size - 1
-                                if (lastIndex >= 0) {
-                                    billItems[lastIndex] = m.name to m.lastPrice.toString()
-                                }
-                            }
-                        }
-                    }
                     
                     // Handle command if one exists for this segment
                     if (index < commands.size) {
@@ -807,16 +835,16 @@ fun AddTransactionDialog(
                                     )
                                     
                                     val filteredSuggestions = suggestions.filter { 
-                                        it.name.contains(billItems[index].first, ignoreCase = true) && 
-                                        it.name != billItems[index].first
+                                        it.name.contains(billItems[index].first, ignoreCase = true)
                                     }
                                     if (filteredSuggestions.isNotEmpty() && billItems[index].first.isNotEmpty()) {
                                         Card(modifier = Modifier.fillMaxWidth()) {
                                             filteredSuggestions.take(3).forEach { suggestion ->
+                                                val displayName = ProductParser.getFormattedName(suggestion.name, suggestion.units)
                                                 DropdownMenuItem(
-                                                    text = { Text("${suggestion.name} (₹${suggestion.lastPrice})") },
+                                                    text = { Text("$displayName (₹${suggestion.lastPrice})") },
                                                     onClick = { 
-                                                        billItems[index] = suggestion.name to suggestion.lastPrice.toString()
+                                                        billItems[index] = displayName to suggestion.lastPrice.toString()
                                                     }
                                                 )
                                             }
@@ -910,7 +938,13 @@ fun AddTransactionDialog(
                     // Photo Attachment Area
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
-                            onClick = { galleryLauncher.launch("image/*") },
+                            onClick = { 
+                                if (attachmentUri != null || attachmentPath != null) {
+                                    showReplacePhotoConfirm = true
+                                } else {
+                                    galleryLauncher.launch("image/*")
+                                }
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.AttachFile, null)
@@ -924,12 +958,32 @@ fun AddTransactionDialog(
                                 model = attachmentUri ?: attachmentPath,
                                 contentDescription = "Preview",
                                 modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small).clickable {
-                                    attachmentUri = null
-                                    attachmentPath = null
+                                    showReplacePhotoConfirm = true
                                 },
                                 contentScale = ContentScale.Crop
                             )
                         }
+                    }
+
+                    if (showReplacePhotoConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showReplacePhotoConfirm = false },
+                            title = { Text("Replace Photo?") },
+                            text = { Text("Do you want to replace or remove the current photo attachment?") },
+                            confirmButton = {
+                                Button(onClick = {
+                                    showReplacePhotoConfirm = false
+                                    galleryLauncher.launch("image/*")
+                                }) { Text("Replace") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    attachmentUri = null
+                                    attachmentPath = null
+                                    showReplacePhotoConfirm = false
+                                }) { Text("Remove", color = Color.Red) }
+                            }
+                        )
                     }
 
                     if (type == TransactionType.DEBIT && !isEdit) {

@@ -1,5 +1,6 @@
 package g.p.cbb.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import g.p.cbb.data.entity.ProductSuggestion
@@ -69,13 +71,19 @@ fun ProductsScreen(viewModel: CbbViewModel) {
         }
     }
 
+    val context = LocalContext.current
     if (showAddDialog) {
         ProductDialog(
             title = "Add Product",
             onDismiss = { showAddDialog = false },
             onConfirm = { name, price, shortcut, units ->
-                viewModel.addProduct(name, price, shortcut, units)
-                showAddDialog = false
+                viewModel.addProduct(name, price, shortcut, units) { error ->
+                    if (error != null) {
+                        Toast.makeText(context, "Error: Product or Shortcut already exists", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showAddDialog = false
+                    }
+                }
             }
         )
     }
@@ -89,8 +97,13 @@ fun ProductsScreen(viewModel: CbbViewModel) {
             initialUnits = product.units ?: "",
             onDismiss = { productToEdit = null },
             onConfirm = { name, price, shortcut, units ->
-                viewModel.updateProduct(product.copy(name = name, lastPrice = price, shortcut = shortcut, units = units))
-                productToEdit = null
+                viewModel.updateProduct(product.copy(name = name, lastPrice = price, shortcut = shortcut, units = units)) { error ->
+                    if (error != null) {
+                        Toast.makeText(context, "Error: Product or Shortcut already exists", Toast.LENGTH_SHORT).show()
+                    } else {
+                        productToEdit = null
+                    }
+                }
             },
             showDelete = true,
             onDelete = {

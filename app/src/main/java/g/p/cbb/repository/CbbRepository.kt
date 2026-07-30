@@ -62,16 +62,31 @@ class CbbRepository @Inject constructor(
             billItemDao.insertBillItems(itemsWithId)
             // Save suggestions
             billItems.forEach { item ->
-                val shortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
                 val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
-                productSuggestionDao.upsertSuggestion(
+                val baseShortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
+                
+                val existing = productSuggestionDao.getSuggestionByNameAndUnits(item.productName, units)
+                val suggestion = if (existing != null) {
+                    existing.copy(lastPrice = item.price, shortcut = baseShortcut)
+                } else {
+                    // Ensure shortcut is unique for new entries
+                    var uniqueShortcut = baseShortcut
+                    var counter = 1
+                    while (productSuggestionDao.getSuggestionByShortcut(uniqueShortcut) != null) {
+                        uniqueShortcut = "${baseShortcut}_${counter++}"
+                    }
                     ProductSuggestion(
                         name = item.productName, 
                         lastPrice = item.price,
-                        shortcut = shortcut,
+                        shortcut = uniqueShortcut,
                         units = units
                     )
-                )
+                }
+                try {
+                    productSuggestionDao.upsertSuggestion(suggestion)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
@@ -107,16 +122,30 @@ class CbbRepository @Inject constructor(
 
         // Save suggestions
         billItems.forEach { item ->
-            val shortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
             val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
-            productSuggestionDao.upsertSuggestion(
+            val baseShortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
+            
+            val existing = productSuggestionDao.getSuggestionByNameAndUnits(item.productName, units)
+            val suggestion = if (existing != null) {
+                existing.copy(lastPrice = item.price, shortcut = baseShortcut)
+            } else {
+                var uniqueShortcut = baseShortcut
+                var counter = 1
+                while (productSuggestionDao.getSuggestionByShortcut(uniqueShortcut) != null) {
+                    uniqueShortcut = "${baseShortcut}_${counter++}"
+                }
                 ProductSuggestion(
                     name = item.productName, 
                     lastPrice = item.price,
-                    shortcut = shortcut,
+                    shortcut = uniqueShortcut,
                     units = units
                 )
-            )
+            }
+            try {
+                productSuggestionDao.upsertSuggestion(suggestion)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         val customer = customerDao.getCustomerById(newTransaction.customerId)
@@ -148,12 +177,29 @@ class CbbRepository @Inject constructor(
 
     fun getProductSuggestions(): Flow<List<ProductSuggestion>> = productSuggestionDao.getAllSuggestions()
 
-    suspend fun addProductSuggestion(name: String, price: Double, shortcut: String? = null, units: String? = null) {
-        productSuggestionDao.upsertSuggestion(ProductSuggestion(name, price, shortcut, units))
+    suspend fun addProductSuggestion(name: String, price: Double, shortcut: String? = null, units: String? = null): String? {
+        return try {
+            productSuggestionDao.upsertSuggestion(
+                ProductSuggestion(
+                    name = name,
+                    lastPrice = price,
+                    shortcut = shortcut,
+                    units = units
+                )
+            )
+            null // Success
+        } catch (e: Exception) {
+            e.message ?: "Failed to add product"
+        }
     }
 
-    suspend fun updateProductSuggestion(suggestion: ProductSuggestion) {
-        productSuggestionDao.updateSuggestion(suggestion)
+    suspend fun updateProductSuggestion(suggestion: ProductSuggestion): String? {
+        return try {
+            productSuggestionDao.updateSuggestion(suggestion)
+            null
+        } catch (e: Exception) {
+            e.message ?: "Update failed"
+        }
     }
 
     suspend fun deleteProductSuggestion(suggestion: ProductSuggestion) {

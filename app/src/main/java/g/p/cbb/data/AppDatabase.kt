@@ -15,7 +15,7 @@ import g.p.cbb.data.entity.*
         ActivityLog::class, 
         ProductSuggestion::class
     ], 
-    version = 9, 
+    version = 11, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
