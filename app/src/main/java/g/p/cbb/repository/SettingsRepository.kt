@@ -23,6 +23,12 @@ class SettingsRepository @Inject constructor(
     fun saveSortOption(option: SortOption) {
         prefs.edit().putString("sort_option", option.name).apply()
     }
+
+    fun getSpreadsheetId(): String? = prefs.getString("spreadsheet_id", null)
+    fun saveSpreadsheetId(id: String) = prefs.edit().putString("spreadsheet_id", id).apply()
+
+    fun getDriveFolderId(): String? = prefs.getString("drive_folder_id", null)
+    fun saveDriveFolderId(id: String) = prefs.edit().putString("drive_folder_id", id).apply()
 }
 
 enum class SortOption {

@@ -17,5 +17,9 @@ data class ProductSuggestion(
     val name: String,
     val lastPrice: Double,
     val shortcut: String? = null,
-    val units: String? = null
+    val units: String? = null,
+    val createdBy: String = "admin",
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val syncStatus: Int = 1,
+    val serverId: String? = null
 )

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -23,6 +24,10 @@ import java.util.*
 fun ActivityHistoryScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     val logs by viewModel.activityLogs.collectAsState(initial = emptyList())
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+
+    LaunchedEffect(Unit) {
+        viewModel.markHistoryAsRead()
+    }
 
     Scaffold(
         topBar = {

@@ -48,6 +48,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/DEPENDENCIES"
+        }
+    }
 }
 
 dependencies {
@@ -66,8 +73,20 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.hilt.work)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.coil.compose)
+
+    // Google Services & APIs
+    implementation(libs.google.auth)
+    implementation(libs.google.sheets)
+    implementation(libs.google.drive)
+    implementation(libs.google.api.client)
+    implementation(libs.google.http.client)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     // Room
@@ -78,6 +97,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

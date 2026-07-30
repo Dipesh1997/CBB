@@ -7,6 +7,8 @@ import g.p.cbb.data.entity.*
 import g.p.cbb.repository.CbbRepository
 import g.p.cbb.repository.SettingsRepository
 import g.p.cbb.repository.SortOption
+import g.p.cbb.utils.GoogleAuthManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -14,8 +16,69 @@ import javax.inject.Inject
 @HiltViewModel
 class CbbViewModel @Inject constructor(
     private val repository: CbbRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val authManager: GoogleAuthManager,
+    private val syncManager: g.p.cbb.utils.CloudSyncManager
 ) : ViewModel() {
+
+    sealed class SyncEvent {
+        data class RequestAuthorization(val intent: android.content.Intent) : SyncEvent()
+        data class Error(val message: String) : SyncEvent()
+        object Success : SyncEvent()
+        object PickAccount : SyncEvent()
+    }
+
+    private val _syncEvents = MutableSharedFlow<SyncEvent>()
+    val syncEvents = _syncEvents.asSharedFlow()
+
+    val userEmail = authManager.userEmail
+    val userName = authManager.userName
+
+    fun signIn(context: android.content.Context) {
+        viewModelScope.launch {
+            val success = authManager.signIn(context)
+            if (success) {
+                repository.markAllDataAsUnsynced()
+                performSync(isManual = true)
+            }
+        }
+    }
+
+    fun syncNow() {
+        performSync(isManual = true)
+    }
+
+    private fun performSync(isManual: Boolean) {
+        viewModelScope.launch {
+            try {
+                syncManager.fullSync()
+                if (isManual) _syncEvents.emit(SyncEvent.Success)
+            } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
+                if (isManual) _syncEvents.emit(SyncEvent.RequestAuthorization(e.intent))
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "Sync Failed"
+                if (isManual) {
+                    if (errorMsg.contains("name must not be empty", ignoreCase = true)) {
+                        _syncEvents.emit(SyncEvent.PickAccount)
+                    } else {
+                        _syncEvents.emit(SyncEvent.Error(errorMsg))
+                    }
+                }
+            }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            authManager.signOut()
+        }
+    }
+
+    fun inviteCollaborator(email: String) {
+        viewModelScope.launch {
+            syncManager.inviteCollaborator(email)
+        }
+    }
 
     private val _sortOption = MutableStateFlow(settingsRepository.getSortOption())
     val sortOption = _sortOption.asStateFlow()
@@ -30,9 +93,21 @@ class CbbViewModel @Inject constructor(
         }
         val badDebt = customers.filter { it.isBadDebt }.sortedBy { it.name }
         active + badDebt
-    }
+    }.flowOn(Dispatchers.Default)
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     val activityLogs = repository.getActivityLogs()
+    val unreadHistoryCount = repository.getUnreadLogCount()
+
+    fun markHistoryAsRead() {
+        viewModelScope.launch {
+            repository.markLogsAsRead()
+        }
+    }
     val productSuggestions = repository.getProductSuggestions()
 
     private val _backupHistory = MutableStateFlow<List<java.io.File>>(emptyList())
@@ -105,6 +180,7 @@ class CbbViewModel @Inject constructor(
     fun addCustomer(name: String, phone: String, address: String) {
         viewModelScope.launch {
             repository.addCustomer(Customer(name = name, phone = phone, address = address))
+            performSync(isManual = false)
         }
     }
 
@@ -114,12 +190,14 @@ class CbbViewModel @Inject constructor(
             if (_selectedCustomer.value?.id == customer.id) {
                 _selectedCustomer.value = customer
             }
+            performSync(isManual = false)
         }
     }
 
     fun deleteCustomer(customer: Customer) {
         viewModelScope.launch {
             repository.deleteCustomer(customer)
+            performSync(isManual = false)
         }
     }
 
@@ -146,6 +224,7 @@ class CbbViewModel @Inject constructor(
                 timestamp
             )
             refreshCustomer(customer.id)
+            performSync(isManual = false)
         }
     }
 
@@ -153,6 +232,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateTransaction(oldTransaction, newTransaction, billItems)
             refreshCustomer(newTransaction.customerId)
+            performSync(isManual = false)
         }
     }
 
@@ -160,6 +240,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteTransaction(transaction)
             refreshCustomer(transaction.customerId)
+            performSync(isManual = false)
         }
     }
 
@@ -188,6 +269,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             val error = repository.addProductSuggestion(name, price, shortcut, units)
             onResult(error)
+            if (error == null) performSync(isManual = false)
         }
     }
 
@@ -195,12 +277,14 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             val error = repository.updateProductSuggestion(suggestion)
             onResult(error)
+            if (error == null) performSync(isManual = false)
         }
     }
 
     fun deleteProduct(suggestion: ProductSuggestion) {
         viewModelScope.launch {
             repository.deleteProductSuggestion(suggestion)
+            performSync(isManual = false)
         }
     }
 
@@ -239,6 +323,7 @@ class CbbViewModel @Inject constructor(
             )
             refreshCustomer(customer.id)
             _selectedBillPayments.value = repository.getLinkedTransactions(billId)
+            performSync(isManual = false)
         }
     }
 
@@ -247,6 +332,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateCustomerReminder(customer.id, reminderTime)
             refreshCustomer(customer.id)
+            performSync(isManual = false)
         }
     }
 
@@ -255,6 +341,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             repository.updateCustomerReminder(customer.id, null)
             refreshCustomer(customer.id)
+            performSync(isManual = false)
         }
     }
 }

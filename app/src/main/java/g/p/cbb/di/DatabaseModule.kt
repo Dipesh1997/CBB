@@ -13,6 +13,7 @@ import g.p.cbb.data.dao.BillItemDao
 import g.p.cbb.data.dao.ProductSuggestionDao
 import g.p.cbb.data.dao.CustomerDao
 import g.p.cbb.data.dao.TransactionDao
+import g.p.cbb.data.dao.TombstoneDao
 import javax.inject.Singleton
 
 @Module
@@ -41,4 +42,7 @@ object DatabaseModule {
 
     @Provides
     fun provideProductSuggestionDao(database: AppDatabase): ProductSuggestionDao = database.productSuggestionDao()
+
+    @Provides
+    fun provideTombstoneDao(database: AppDatabase): TombstoneDao = database.tombstoneDao()
 }

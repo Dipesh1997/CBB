@@ -12,5 +12,9 @@ data class Customer(
     val address: String = "",
     val totalBalance: Double = 0.0, // Negative for Debit, Positive for Credit
     val reminderTime: Long? = null,
-    val isBadDebt: Boolean = false
+    val isBadDebt: Boolean = false,
+    val createdBy: String = "admin",
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val syncStatus: Int = 1, // 0: Synced, 1: Pending
+    val serverId: String? = null
 )

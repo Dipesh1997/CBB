@@ -38,6 +38,8 @@ fun HomeScreen(
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val currentSort by viewModel.sortOption.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
+    
     var showAddCustomerDialog by remember { mutableStateOf(false) }
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -85,6 +87,20 @@ fun HomeScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = { 
+                        if (userEmail == null) {
+                            viewModel.signIn(context)
+                        } else {
+                            Toast.makeText(context, "Syncing with Google Sheets...", Toast.LENGTH_SHORT).show()
+                            viewModel.syncNow()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (userEmail != null) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                            contentDescription = "Sync Status",
+                            tint = if (userEmail != null) Color(0xFF4CAF50) else Color.Gray
+                        )
+                    }
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
@@ -155,7 +171,14 @@ fun HomeScreen(
                                     }
                                 }
                             },
-                            supportingContent = { Text(customer.phone) },
+                            supportingContent = { 
+                                Column {
+                                    Text(customer.phone)
+                                    if (customer.createdBy != "admin") {
+                                        Text("By: ${customer.createdBy}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                    }
+                                }
+                            },
                             trailingContent = {
                                 val color = if (customer.totalBalance >= 0) Color(0xFFF44336) else Color(0xFF4CAF50)
                                 val label = if (customer.totalBalance < 0) "Advance" else ""

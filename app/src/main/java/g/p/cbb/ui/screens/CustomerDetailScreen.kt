@@ -573,7 +573,12 @@ fun TransactionItem(
         headlineContent = { 
             val headline = if (transaction.parentTransactionId != null) "Part Payment" 
             else transaction.note.ifEmpty { transaction.type.name }
-            Text(headline)
+            Column {
+                Text(headline)
+                if (transaction.createdBy != "admin") {
+                    Text("By: ${transaction.createdBy}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
         },
         supportingContent = { 
             Row(verticalAlignment = Alignment.CenterVertically) {

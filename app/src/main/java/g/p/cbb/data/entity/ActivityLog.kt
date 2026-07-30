@@ -8,5 +8,9 @@ data class ActivityLog(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val description: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isCloudUpdate: Boolean = false,
+    val isRead: Boolean = true,
+    val syncStatus: Int = 1,
+    val serverId: String? = null
 )

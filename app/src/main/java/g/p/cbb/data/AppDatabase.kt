@@ -13,9 +13,10 @@ import g.p.cbb.data.entity.*
         Transaction::class, 
         BillItem::class, 
         ActivityLog::class, 
-        ProductSuggestion::class
+        ProductSuggestion::class,
+        Tombstone::class
     ], 
-    version = 11, 
+    version = 15, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -25,6 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun billItemDao(): BillItemDao
     abstract fun activityLogDao(): ActivityLogDao
     abstract fun productSuggestionDao(): ProductSuggestionDao
+    abstract fun tombstoneDao(): TombstoneDao
 }
 
 class Converters {

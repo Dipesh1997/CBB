@@ -26,7 +26,11 @@ data class Transaction(
     val timestamp: Long = System.currentTimeMillis(),
     val note: String = "",
     val parentTransactionId: Long? = null,
-    val attachmentPath: String? = null
+    val attachmentPath: String? = null,
+    val createdBy: String = "admin",
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val syncStatus: Int = 1,
+    val serverId: String? = null
 )
 
 enum class TransactionType {

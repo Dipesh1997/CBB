@@ -22,5 +22,8 @@ data class BillItem(
     val id: Long = 0,
     val transactionId: Long,
     val productName: String,
-    val price: Double
+    val price: Double,
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val syncStatus: Int = 1,
+    val serverId: String? = null
 )

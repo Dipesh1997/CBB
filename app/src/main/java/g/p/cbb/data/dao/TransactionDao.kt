@@ -16,4 +16,25 @@ interface TransactionDao {
     suspend fun deleteTransaction(transaction: Transaction)
     @Query("SELECT * FROM transactions WHERE parentTransactionId = :parentId")
     suspend fun getLinkedTransactions(parentId: Long): List<Transaction>
+
+    @Query("SELECT * FROM transactions WHERE syncStatus = 1")
+    suspend fun getUnsyncedTransactions(): List<Transaction>
+
+    @Query("UPDATE transactions SET syncStatus = 0, serverId = :serverId WHERE id = :localId")
+    suspend fun markSynced(localId: Long, serverId: String)
+
+    @Query("UPDATE transactions SET syncStatus = 1 WHERE syncStatus = 0")
+    suspend fun markAllAsUnsynced()
+
+    @Query("UPDATE transactions SET serverId = :serverId WHERE id = :id")
+    suspend fun updateServerId(id: Long, serverId: String)
+
+    @Query("SELECT * FROM transactions WHERE customerId = :customerId")
+    suspend fun getTransactionsForCustomerList(customerId: Long): List<Transaction>
+
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getTransactionById(id: Long): Transaction?
+
+    @Query("SELECT * FROM transactions WHERE serverId = :serverId LIMIT 1")
+    suspend fun getTransactionByServerId(serverId: String): Transaction?
 }

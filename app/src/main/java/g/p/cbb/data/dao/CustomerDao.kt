@@ -21,6 +21,21 @@ interface CustomerDao {
     @Delete
     suspend fun deleteCustomer(customer: Customer)
 
+    @Query("SELECT * FROM customers WHERE syncStatus = 1")
+    suspend fun getUnsyncedCustomers(): List<Customer>
+
+    @Query("SELECT * FROM customers WHERE serverId = :serverId LIMIT 1")
+    suspend fun getCustomerByServerId(serverId: String): Customer?
+
     @Query("UPDATE customers SET totalBalance = totalBalance + :amount WHERE id = :customerId")
     suspend fun updateBalance(customerId: Long, amount: Double)
+
+    @Query("UPDATE customers SET syncStatus = 0, serverId = :serverId WHERE id = :localId")
+    suspend fun markSynced(localId: Long, serverId: String)
+
+    @Query("UPDATE customers SET syncStatus = 1 WHERE syncStatus = 0")
+    suspend fun markAllAsUnsynced()
+
+    @Query("UPDATE customers SET serverId = :serverId WHERE id = :id")
+    suspend fun updateServerId(id: Long, serverId: String)
 }
