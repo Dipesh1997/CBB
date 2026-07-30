@@ -29,6 +29,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET serverId = :serverId WHERE id = :id")
     suspend fun updateServerId(id: Long, serverId: String)
 
+    @Query("UPDATE transactions SET driveFileId = :fileId WHERE id = :id")
+    suspend fun updateDriveFileId(id: Long, fileId: String)
+
     @Query("SELECT * FROM transactions WHERE customerId = :customerId")
     suspend fun getTransactionsForCustomerList(customerId: Long): List<Transaction>
 

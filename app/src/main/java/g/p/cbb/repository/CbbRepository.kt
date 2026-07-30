@@ -149,23 +149,25 @@ class CbbRepository @Inject constructor(
             }
         }
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
-        customerDao.updateBalance(transaction.customerId, balanceChange)
+        val updateTime = System.currentTimeMillis()
+        customerDao.updateBalance(transaction.customerId, balanceChange, updateTime)
         
         val customer = customerDao.getCustomerById(transaction.customerId)
         logActivity("Added ${transaction.type} of ₹${transaction.amount} for ${customer?.name ?: "Unknown"}")
     }
 
     suspend fun updateTransaction(oldTransaction: Transaction, newTransaction: Transaction, billItems: List<BillItem> = emptyList()) = withContext(Dispatchers.IO) {
+        val syncTime = System.currentTimeMillis()
         val syncTransaction = newTransaction.copy(
-            lastUpdated = System.currentTimeMillis(),
+            lastUpdated = syncTime,
             syncStatus = 1
         )
         
         val reverseAmount = if (oldTransaction.type == TransactionType.CREDIT) oldTransaction.amount else -oldTransaction.amount
-        customerDao.updateBalance(oldTransaction.customerId, reverseAmount)
+        customerDao.updateBalance(oldTransaction.customerId, reverseAmount, syncTime)
 
         val newAmount = if (syncTransaction.type == TransactionType.CREDIT) -syncTransaction.amount else syncTransaction.amount
-        customerDao.updateBalance(syncTransaction.customerId, newAmount)
+        customerDao.updateBalance(syncTransaction.customerId, newAmount, syncTime)
 
         transactionDao.insertTransaction(syncTransaction)
 
@@ -211,8 +213,9 @@ class CbbRepository @Inject constructor(
     }
 
     suspend fun deleteTransaction(transaction: Transaction) = withContext(Dispatchers.IO) {
+        val syncTime = System.currentTimeMillis()
         val reverseAmount = if (transaction.type == TransactionType.CREDIT) transaction.amount else -transaction.amount
-        customerDao.updateBalance(transaction.customerId, reverseAmount)
+        customerDao.updateBalance(transaction.customerId, reverseAmount, syncTime)
         
         // 1. Fetch linked items to track their deletion
         val items = billItemDao.getBillItemsForTransaction(transaction.id)

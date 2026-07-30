@@ -27,8 +27,8 @@ interface CustomerDao {
     @Query("SELECT * FROM customers WHERE serverId = :serverId LIMIT 1")
     suspend fun getCustomerByServerId(serverId: String): Customer?
 
-    @Query("UPDATE customers SET totalBalance = totalBalance + :amount WHERE id = :customerId")
-    suspend fun updateBalance(customerId: Long, amount: Double)
+    @Query("UPDATE customers SET totalBalance = totalBalance + :amount, lastUpdated = :timestamp, syncStatus = 1 WHERE id = :customerId")
+    suspend fun updateBalance(customerId: Long, amount: Double, timestamp: Long = System.currentTimeMillis())
 
     @Query("UPDATE customers SET syncStatus = 0, serverId = :serverId WHERE id = :localId")
     suspend fun markSynced(localId: Long, serverId: String)

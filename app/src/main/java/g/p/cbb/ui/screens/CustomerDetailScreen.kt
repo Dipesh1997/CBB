@@ -583,7 +583,7 @@ fun TransactionItem(
         supportingContent = { 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(dateFormat.format(Date(transaction.timestamp)))
-                if (transaction.attachmentPath != null) {
+                if (transaction.attachmentPath != null || transaction.driveFileId != null) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(14.dp))
                 }
@@ -1041,15 +1041,19 @@ fun BillDetailsDialog(
         },
         text = {
             Column {
-                if (transaction?.attachmentPath != null) {
+                val imageSource = transaction?.attachmentPath ?: transaction?.driveFileId?.let { "https://drive.google.com/thumbnail?id=$it" }
+                if (imageSource != null) {
                     AsyncImage(
-                        model = transaction.attachmentPath,
+                        model = imageSource,
                         contentDescription = "Attachment",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp)
                             .clip(MaterialTheme.shapes.medium)
-                            .clickable { onImageClick(transaction.attachmentPath) }
+                            .clickable { 
+                                transaction?.attachmentPath?.let { onImageClick(it) }
+                                    ?: transaction?.driveFileId?.let { onImageClick("https://drive.google.com/file/d/$it/view") }
+                            }
                             .padding(bottom = 16.dp),
                         contentScale = ContentScale.Fit
                     )

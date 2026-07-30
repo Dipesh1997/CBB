@@ -197,13 +197,23 @@ class CloudSyncManager @Inject constructor(
                 return@forEach
             }
 
-            var attachmentUrl = ""
+            var imagePreview = ""
+            var viewLink = ""
+            var driveFileId = tx.driveFileId ?: ""
+            
             tx.attachmentPath?.let { path ->
                 val file = java.io.File(path)
                 if (file.exists()) {
-                    attachmentUrl = GoogleDriveHelper.uploadFile(drive, file, null)
+                    driveFileId = GoogleDriveHelper.uploadFile(drive, file, null)
+                    transactionDao.updateDriveFileId(tx.id, driveFileId)
                 }
             }
+            
+            if (driveFileId.isNotEmpty()) {
+                imagePreview = "=IMAGE(\"https://drive.google.com/thumbnail?id=$driveFileId\")"
+                viewLink = "=HYPERLINK(\"https://drive.google.com/file/d/$driveFileId/view\", \"View Attachment\")"
+            }
+
             val row = listOf(
                 tx.id.toString(),
                 customerServerId,
@@ -211,12 +221,14 @@ class CloudSyncManager @Inject constructor(
                 tx.type.name,
                 tx.timestamp.toString(),
                 tx.note,
-                attachmentUrl,
+                imagePreview,
+                viewLink,
+                driveFileId,
                 tx.createdBy,
                 tx.lastUpdated.toString(),
                 serverId
             )
-            val updated = updateOrAppendRow(sheets, spreadsheetId, "Transactions", serverId, row, 9)
+            val updated = updateOrAppendRow(sheets, spreadsheetId, "Transactions", serverId, row, 11)
             if (updated) {
                 transactionDao.markSynced(tx.id, serverId)
             }
@@ -311,7 +323,7 @@ class CloudSyncManager @Inject constructor(
                 }
                 val colIndex = when (ts.tableName) {
                     "customers" -> 8
-                    "transactions" -> 9
+                    "transactions" -> 11
                     "product_suggestions" -> 7
                     "bill_items" -> 5
                     else -> -1
@@ -332,7 +344,7 @@ class CloudSyncManager @Inject constructor(
             val body = ValueRange().setValues(listOf(row))
             sheets.spreadsheets().values()
                 .append(spreadsheetId, "Trash!A1", body)
-                .setValueInputOption("RAW")
+                .setValueInputOption("USER_ENTERED")
                 .execute()
             tombstoneDao.markSynced(ts.id)
         }
@@ -400,14 +412,14 @@ class CloudSyncManager @Inject constructor(
                 val body = ValueRange().setValues(listOf(row))
                 sheets.spreadsheets().values()
                     .update(spreadsheetId, updateRange, body)
-                    .setValueInputOption("RAW")
+                    .setValueInputOption("USER_ENTERED")
                     .execute()
             } else {
                 // Append new
                 val body = ValueRange().setValues(listOf(row))
                 sheets.spreadsheets().values()
                     .append(spreadsheetId, "$sheetName!A1", body)
-                    .setValueInputOption("RAW")
+                    .setValueInputOption("USER_ENTERED")
                     .execute()
             }
             true
@@ -445,12 +457,12 @@ class CloudSyncManager @Inject constructor(
     }
 
     private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String) {
-        val response = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:J").execute()
+        val response = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:L").execute()
         val rows = response.getValues() ?: return
         rows.forEach { row ->
-            if (row.size < 10) return@forEach
-            val serverId = row[9].toString()
-            val lastUpdated = row[8].toString().toLongOrNull() ?: 0L
+            if (row.size < 12) return@forEach
+            val serverId = row[11].toString()
+            val lastUpdated = row[10].toString().toLongOrNull() ?: 0L
             val customerServerId = row[1].toString()
             
             val localCustomer = customerDao.getCustomerByServerId(customerServerId) ?: return@forEach // Cannot pull tx without customer
@@ -464,11 +476,12 @@ class CloudSyncManager @Inject constructor(
                     type = try { TransactionType.valueOf(row[3].toString()) } catch (e: Exception) { TransactionType.DEBIT },
                     timestamp = row[4].toString().toLongOrNull() ?: 0L,
                     note = row[5].toString(),
-                    attachmentPath = row[6].toString().takeIf { it.isNotEmpty() },
-                    createdBy = row[7].toString(),
+                    attachmentPath = null, 
+                    createdBy = row[9].toString(),
                     lastUpdated = lastUpdated,
                     syncStatus = 0,
-                    serverId = serverId
+                    serverId = serverId,
+                    driveFileId = row[8].toString().takeIf { it.isNotEmpty() }
                 )
                 transactionDao.insertTransaction(tx)
             }

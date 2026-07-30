@@ -16,7 +16,7 @@ import g.p.cbb.data.entity.*
         ProductSuggestion::class,
         Tombstone::class
     ], 
-    version = 15, 
+    version = 16, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
