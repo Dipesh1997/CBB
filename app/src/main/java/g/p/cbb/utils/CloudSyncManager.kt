@@ -24,8 +24,8 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// Absolute Master Spreadsheet Lock
-const val FINAL_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
+// Absolute Master Spreadsheet Lock - v21 Replica
+private const val FIXED_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
 
 @Singleton
 class CloudSyncManager @Inject constructor(
@@ -41,7 +41,7 @@ class CloudSyncManager @Inject constructor(
     private val syncLock = Mutex()
 
     private fun getSheetsService(email: String): Sheets {
-        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE))
+        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY))
         val targetEmail = email.trim()
         val account = findSystemAccount(targetEmail)
         if (account != null) {
@@ -55,7 +55,7 @@ class CloudSyncManager @Inject constructor(
     }
 
     private fun getDriveService(email: String): Drive {
-        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE))
+        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY))
         val targetEmail = email.trim()
         val account = findSystemAccount(targetEmail)
         if (account != null) {
@@ -84,12 +84,8 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun fullSync() = syncLock.withLock {
         withContext(Dispatchers.IO) {
-            Log.i("CloudSync", "--- MASTER v20 SYNC START ---")
+            Log.i("CloudSync", "--- MASTER v21 REPLICA SYNC START ---")
             
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Linking to Ledger: ...${FINAL_SPREADSHEET_ID.takeLast(5)}", Toast.LENGTH_SHORT).show()
-            }
-
             var email = authManager.userEmail.value
             if (email == null) {
                 val am = android.accounts.AccountManager.get(context)
@@ -108,22 +104,23 @@ class CloudSyncManager @Inject constructor(
             val drive = getDriveService(email)
 
             try {
-                val spreadsheetId = FINAL_SPREADSHEET_ID
+                val spreadsheetId = FIXED_SPREADSHEET_ID
                 require(spreadsheetId.length > 5) { "FATAL: Spreadsheet ID is invalid!" }
                 
-                Log.d("CloudSync", "Executing sync for ID: $spreadsheetId")
-                
+                // Perfect Parity: Ensure headers are 13 columns for Transactions
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
+                // Push phase
                 pushCustomers(sheets, spreadsheetId)
                 pushTransactions(sheets, spreadsheetId, drive)
                 pushHistory(sheets, spreadsheetId)
                 pushTombstones(sheets, spreadsheetId)
 
+                // Pull phase
                 pullCustomers(sheets, spreadsheetId)
                 pullTransactions(sheets, spreadsheetId)
                 
-                Log.i("CloudSync", "Sync Completed for $email")
+                Log.i("CloudSync", "Sync Completed Successfully for $email")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
             } catch (e: Exception) {
@@ -139,7 +136,17 @@ class CloudSyncManager @Inject constructor(
         unsynced.forEach { customer ->
             val serverId = customer.serverId ?: UUID.randomUUID().toString()
             if (customer.serverId == null) customerDao.updateServerId(customer.id, serverId)
-            val row = listOf(customer.id.toString(), customer.name, customer.phone, customer.address, customer.totalBalance.toString(), customer.isBadDebt.toString(), customer.createdBy, customer.lastUpdated.toString(), serverId)
+            val row = listOf(
+                customer.id.toString(),
+                customer.name,
+                customer.phone,
+                customer.address,
+                customer.totalBalance.toString(),
+                customer.isBadDebt.toString(),
+                customer.createdBy,
+                customer.lastUpdated.toString(),
+                serverId
+            )
             if (updateOrAppendRow(sheets, spreadsheetId, "Customers", serverId, row, 8)) {
                 customerDao.markSynced(customer.id, serverId)
             }
@@ -163,10 +170,26 @@ class CloudSyncManager @Inject constructor(
                 }
             }
             
+            // Web Parity: Col 6: Image, Col 7: Link, Col 8: DriveID, Col 9: ParentID
             val preview = if (driveFileId.isNotEmpty()) "=IMAGE(\"https://drive.google.com/thumbnail?id=$driveFileId\")" else ""
             val link = if (driveFileId.isNotEmpty()) "=HYPERLINK(\"https://drive.google.com/file/d/$driveFileId/view\", \"View\")" else ""
 
-            val row = listOf(tx.id.toString(), customerServerId, tx.amount.toString(), tx.type.name, tx.timestamp.toString(), tx.note, preview, link, driveFileId, tx.parentServerId ?: "", tx.createdBy, tx.lastUpdated.toString(), serverId)
+            val row = listOf(
+                tx.id.toString(), 
+                customerServerId, 
+                tx.amount.toString(), 
+                tx.type.name, 
+                tx.timestamp.toString(), 
+                tx.note, 
+                preview, 
+                link, 
+                driveFileId, 
+                tx.parentServerId ?: "", 
+                tx.createdBy, 
+                tx.lastUpdated.toString(), 
+                serverId
+            )
+            
             if (updateOrAppendRow(sheets, spreadsheetId, "Transactions", serverId, row, 12)) {
                 transactionDao.markSynced(tx.id, serverId)
             }
@@ -211,9 +234,10 @@ class CloudSyncManager @Inject constructor(
         try {
             val values = sheets.spreadsheets().values().get(spreadsheetId, "$sheetName!A:Z").execute().getValues()
             var rowIndex = -1
+            val targetSid = serverId.trim()
             if (values != null) {
                 for (i in values.indices) {
-                    if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == serverId.trim()) {
+                    if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == targetSid) {
                         rowIndex = i + 1
                         break
                     }
@@ -234,8 +258,9 @@ class CloudSyncManager @Inject constructor(
     private suspend fun deleteRowByServerId(sheets: Sheets, spreadsheetId: String, sheetName: String, serverId: String, serverIdColIndex: Int) {
         try {
             val values = sheets.spreadsheets().values().get(spreadsheetId, "$sheetName!A:Z").execute().getValues() ?: return
+            val targetSid = serverId.trim()
             for (i in values.indices) {
-                if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == serverId.trim()) {
+                if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == targetSid) {
                     sheets.spreadsheets().values().clear(spreadsheetId, "$sheetName!A${i+1}:Z${i+1}", com.google.api.services.sheets.v4.model.ClearValuesRequest()).execute()
                     break
                 }
@@ -302,6 +327,6 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
         val drive = getDriveService(authManager.userEmail.value ?: return@withContext)
-        GoogleDriveHelper.shareWithUser(drive, FINAL_SPREADSHEET_ID, email)
+        GoogleDriveHelper.shareWithUser(drive, FIXED_SPREADSHEET_ID, email)
     }
 }

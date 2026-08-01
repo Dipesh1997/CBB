@@ -16,19 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.repository.SortOption
-import g.p.cbb.ui.components.BalanceCard
 import g.p.cbb.ui.components.EmptyStateGuidance
-import g.p.cbb.utils.BackupManager
-import g.p.cbb.utils.DailyBackupWorker
 import g.p.cbb.viewmodel.CbbViewModel
-import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -38,7 +33,6 @@ fun HomeScreen(
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val currentSort by viewModel.sortOption.collectAsState()
-    val userEmail by viewModel.userEmail.collectAsState()
     
     var showAddCustomerDialog by remember { mutableStateOf(false) }
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
@@ -46,24 +40,11 @@ fun HomeScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // Schedule Daily Backup
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val workRequest = PeriodicWorkRequestBuilder<DailyBackupWorker>(1, TimeUnit.DAYS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "daily_backup",
-                ExistingPeriodicWorkPolicy.KEEP,
-                workRequest
-            )
-        }
-    }
-
     val filteredCustomers = customers.filter { 
         it.name.contains(searchQuery, ignoreCase = true) 
     }
 
-    val totalCredit = customers.filter { it.totalBalance < 0 }.sumOf { -it.totalBalance }
+    val totalCredit = customers.filter { it.totalBalance < 0 }.sumOf { abs(it.totalBalance) }
     val totalDebit = customers.filter { it.totalBalance > 0 }.sumOf { it.totalBalance }
 
     Scaffold(
@@ -73,7 +54,7 @@ fun HomeScreen(
                     TextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search...", fontSize = 14.sp) },
+                        placeholder = { Text("Search Customers...", fontSize = 14.sp) },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -88,17 +69,13 @@ fun HomeScreen(
                 },
                 actions = {
                     IconButton(onClick = { 
-                        if (userEmail == null) {
-                            viewModel.signIn(context)
-                        } else {
-                            Toast.makeText(context, "Syncing with Google Sheets...", Toast.LENGTH_SHORT).show()
-                            viewModel.syncNow()
-                        }
+                        Toast.makeText(context, "Syncing with Cloud...", Toast.LENGTH_SHORT).show()
+                        viewModel.syncNow()
                     }) {
                         Icon(
-                            imageVector = if (userEmail != null) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                            contentDescription = "Sync Status",
-                            tint = if (userEmail != null) Color(0xFF4CAF50) else Color.Gray
+                            imageVector = Icons.Default.CloudSync,
+                            contentDescription = "Sync",
+                            tint = Color(0xFF4CAF50)
                         )
                     }
                     Box {
@@ -132,76 +109,101 @@ fun HomeScreen(
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                BalanceCard(title = "Total Credit", amount = totalCredit, color = Color(0xFF4CAF50))
-                BalanceCard(title = "Total Debit", amount = totalDebit, color = Color(0xFFF44336))
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            item {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Business Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFFF44336).copy(alpha = 0.1f),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Receivable", fontSize = 12.sp, color = Color(0xFFF44336))
+                                Text("₹${"%.2f".format(totalDebit)}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF44336))
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.1f),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Advance", fontSize = 12.sp, color = Color(0xFF4CAF50))
+                                Text("₹${"%.2f".format(totalCredit)}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    text = "Customer List (${filteredCustomers.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
             if (customers.isEmpty()) {
-                EmptyStateGuidance(
-                    icon = Icons.Default.GroupAdd,
-                    title = "Get Started",
-                    steps = listOf(
-                        Icons.Default.Add to "Tap the '+' button at the bottom.",
-                        Icons.Default.Person to "Enter customer name and phone.",
-                        Icons.Default.ShoppingCart to "Start recording their transactions.",
-                        Icons.Default.TouchApp to "Click any entry to view or edit details.",
-                        Icons.Default.Warning to "Long-press to mark as Bad Debt (stays at bottom)."
+                item {
+                    EmptyStateGuidance(
+                        icon = Icons.Default.GroupAdd,
+                        title = "No Customers Found",
+                        steps = listOf(
+                            Icons.Default.Add to "Tap the '+' button to add your first customer.",
+                            Icons.Default.CloudDownload to "Tap the cloud icon to pull data from Sheets.",
+                            Icons.Default.TouchApp to "Click a customer to manage their ledger."
+                        )
                     )
-                )
+                }
             } else {
-                LazyColumn {
-                    items(filteredCustomers) { customer ->
-                        val itemAlpha = if (customer.isBadDebt) 0.5f else 1.0f
-                        ListItem(
-                            headlineContent = { 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(customer.name)
-                                    if (customer.isBadDebt) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        SuggestionChip(
-                                            onClick = {},
-                                            label = { Text("Bad Debt", fontSize = 10.sp) },
-                                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color.LightGray.copy(alpha = 0.3f))
-                                        )
-                                    }
-                                }
-                            },
-                            supportingContent = { 
-                                Column {
-                                    Text(customer.phone)
-                                    if (customer.createdBy != "admin") {
-                                        Text("By: ${customer.createdBy}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                    }
-                                }
-                            },
-                            trailingContent = {
-                                val color = if (customer.totalBalance >= 0) Color(0xFFF44336) else Color(0xFF4CAF50)
-                                val label = if (customer.totalBalance < 0) "Advance" else ""
-                                Column(horizontalAlignment = Alignment.End) {
-                                    if (label.isNotEmpty()) {
-                                        Text(label, fontSize = 10.sp, color = color)
-                                    }
-                                    Text(
-                                        text = "₹${"%.2f".format(Math.abs(customer.totalBalance))}",
-                                        color = color,
-                                        fontSize = 18.sp
+                items(filteredCustomers) { customer ->
+                    val itemAlpha = if (customer.isBadDebt) 0.5f else 1.0f
+                    ListItem(
+                        headlineContent = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(customer.name, fontWeight = FontWeight.Bold)
+                                if (customer.isBadDebt) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    SuggestionChip(
+                                        onClick = {},
+                                        label = { Text("Bad Debt", fontSize = 10.sp) },
+                                        colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color.LightGray.copy(alpha = 0.3f))
                                     )
                                 }
-                            },
-                            modifier = Modifier
-                                .alpha(itemAlpha)
-                                .combinedClickable(
-                                    onClick = { onCustomerClick(customer) },
-                                    onLongClick = { customerToEdit = customer }
-                                )
-                        )
-                        HorizontalDivider()
-                    }
+                            }
+                        },
+                        supportingContent = { 
+                            Text(customer.phone)
+                        },
+                        trailingContent = {
+                            val color = if (customer.totalBalance >= 0) Color(0xFFF44336) else Color(0xFF4CAF50)
+                            Text(
+                                text = "₹${"%.2f".format(abs(customer.totalBalance))}",
+                                color = color,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        },
+                        modifier = Modifier
+                            .alpha(itemAlpha)
+                            .combinedClickable(
+                                onClick = { onCustomerClick(customer) },
+                                onLongClick = { customerToEdit = customer }
+                            )
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
                 }
             }
         }
@@ -220,7 +222,7 @@ fun HomeScreen(
 
     customerToEdit?.let { customer ->
         CustomerDialog(
-            title = "Edit Customer",
+            title = "Edit Customer Details",
             initialName = customer.name,
             initialPhone = customer.phone,
             initialAddress = customer.address,
@@ -260,26 +262,28 @@ fun CustomerDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
-                TextField(
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
+                    label = { Text("Customer Name") },
+                    leadingIcon = { Icon(Icons.Default.Person, null) },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                TextField(
+                OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Phone") },
-                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) }
+                    label = { Text("Phone Number") },
+                    leadingIcon = { Icon(Icons.Default.Phone, null) },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                TextField(
+                OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
                     label = { Text("Address") },
-                    leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.LocationOn, null) },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isBadDebt, onCheckedChange = { isBadDebt = it })
                     Text("Mark as Bad Debt")
@@ -287,7 +291,9 @@ fun CustomerDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name, phone, address, isBadDebt) }) { Text("Confirm") }
+            Button(onClick = { onConfirm(name, phone, address, isBadDebt) }) { 
+                Text(if (showDelete) "Update" else "Add") 
+            }
         },
         dismissButton = {
             Row {
