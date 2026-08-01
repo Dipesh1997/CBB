@@ -14,8 +14,8 @@ object GoogleSheetsHelper {
 
     fun setupSheets(sheets: Sheets, spreadsheetId: String) {
         try {
-            require(spreadsheetId.isNotBlank()) { "FATAL: Spreadsheet ID is blank!" }
-            android.util.Log.d("GoogleSheets", "Repairing/Setting up ID: [$spreadsheetId]")
+            require(spreadsheetId.length > 5) { "FATAL: Spreadsheet ID is invalid or empty!" }
+            android.util.Log.d("GoogleSheets", "Repairing/Setting up ID: [${spreadsheetId.take(10)}...]")
             
             val spreadsheet = sheets.spreadsheets().get(spreadsheetId).execute()
             val existingTitles = spreadsheet.sheets.map { it.properties.title }

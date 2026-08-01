@@ -3,6 +3,7 @@ package g.p.cbb.utils
 import android.accounts.Account
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -23,8 +24,8 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// Master Global Identity for your Spreadsheet
-const val MASTER_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
+// Absolute Master Spreadsheet Lock
+const val FINAL_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
 
 @Singleton
 class CloudSyncManager @Inject constructor(
@@ -83,8 +84,12 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun fullSync() = syncLock.withLock {
         withContext(Dispatchers.IO) {
-            Log.i("CloudSync", "--- MASTER v19 SYNC START ---")
+            Log.i("CloudSync", "--- MASTER v20 SYNC START ---")
             
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Linking to Ledger: ...${FINAL_SPREADSHEET_ID.takeLast(5)}", Toast.LENGTH_SHORT).show()
+            }
+
             var email = authManager.userEmail.value
             if (email == null) {
                 val am = android.accounts.AccountManager.get(context)
@@ -103,8 +108,8 @@ class CloudSyncManager @Inject constructor(
             val drive = getDriveService(email)
 
             try {
-                val spreadsheetId = MASTER_SPREADSHEET_ID
-                require(spreadsheetId.isNotBlank()) { "FATAL: Spreadsheet ID is blank!" }
+                val spreadsheetId = FINAL_SPREADSHEET_ID
+                require(spreadsheetId.length > 5) { "FATAL: Spreadsheet ID is invalid!" }
                 
                 Log.d("CloudSync", "Executing sync for ID: $spreadsheetId")
                 
@@ -297,6 +302,6 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
         val drive = getDriveService(authManager.userEmail.value ?: return@withContext)
-        GoogleDriveHelper.shareWithUser(drive, MASTER_SPREADSHEET_ID, email)
+        GoogleDriveHelper.shareWithUser(drive, FINAL_SPREADSHEET_ID, email)
     }
 }
