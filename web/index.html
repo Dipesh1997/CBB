@@ -75,7 +75,10 @@
             <section id="customers" class="section">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Customers</h2>
-                    <input type="text" id="customer-search" class="search-bar" placeholder="Search customers..." style="max-width: 300px;" onkeyup="filterCustomers()">
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="customer-search" class="search-bar" placeholder="Search customers..." style="max-width: 200px; margin-bottom: 0;" onkeyup="filterCustomers()">
+                        <button class="fab" onclick="showModal('customer')"><span class="material-icons">person_add</span></button>
+                    </div>
                 </div>
                 <div class="card">
                     <table id="customers-table">
@@ -85,6 +88,7 @@
                                 <th>Phone</th>
                                 <th>Balance</th>
                                 <th>Status</th>
+                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -93,16 +97,20 @@
             </section>
 
             <section id="transactions" class="section">
-                <h2>Transaction History</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Transaction History</h2>
+                    <button class="fab" onclick="showModal('transaction')"><span class="material-icons">add</span></button>
+                </div>
                 <div class="card">
                     <table id="transactions-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Customer ID</th>
+                                <th>Customer</th>
                                 <th>Amount</th>
                                 <th>Type</th>
                                 <th>Note</th>
+                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -111,7 +119,10 @@
             </section>
 
             <section id="catalog" class="section">
-                <h2>Product Catalog</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Product Catalog</h2>
+                    <button class="fab" onclick="showModal('catalog')"><span class="material-icons">add</span></button>
+                </div>
                 <div class="card">
                     <table id="catalog-table">
                         <thead>
@@ -119,6 +130,7 @@
                                 <th>Product Name</th>
                                 <th>Price</th>
                                 <th>Units</th>
+                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -126,6 +138,23 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" onclick="hideModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div id="modal-header">
+                <h3 id="modal-title">Add Item</h3>
+                <span class="material-icons" style="cursor:pointer;" onclick="hideModal()">close</span>
+            </div>
+            <form id="modal-form" onsubmit="handleFormSubmit(event)">
+                <div id="form-fields"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn-text" onclick="hideModal()">Cancel</button>
+                    <button type="submit" class="btn-primary" id="save-btn">Save</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div id="loader">
