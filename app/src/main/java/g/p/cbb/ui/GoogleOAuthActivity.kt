@@ -3,6 +3,7 @@ package g.p.cbb.ui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebResourceRequest
@@ -22,12 +23,14 @@ class GoogleOAuthActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val clientId = intent.getStringExtra("CLIENT_ID") ?: "812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com"
         val scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+        val redirectUri = "https://developers.google.com/oauthplayground"
+        
         val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
                 "client_id=$clientId&" +
-                "redirect_uri=http://localhost&" +
+                "redirect_uri=${Uri.encode(redirectUri)}&" +
                 "response_type=token&" +
                 "scope=${Uri.encode(scopes)}&" +
-                "prompt=consent"
+                "prompt=select_account"
 
         setContent {
             MaterialTheme {
@@ -40,9 +43,16 @@ class GoogleOAuthActivity : ComponentActivity() {
                                 settings.domStorageEnabled = true
                                 settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                                 webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                        super.onPageStarted(view, url, favicon)
+                                        if (url != null && url.contains("access_token=")) {
+                                            extractTokenAndFinish(url)
+                                        }
+                                    }
+
                                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                         val url = request?.url?.toString() ?: ""
-                                        if (url.startsWith("http://localhost")) {
+                                        if (url.contains("access_token=")) {
                                             extractTokenAndFinish(url)
                                             return true
                                         }
@@ -61,23 +71,20 @@ class GoogleOAuthActivity : ComponentActivity() {
 
     private fun extractTokenAndFinish(url: String) {
         try {
-            val fragment = url.substringAfter("#", "")
-            val params = fragment.split("&").associate {
-                val parts = it.split("=")
-                if (parts.size == 2) parts[0] to parts[1] else "" to ""
-            }
-            val accessToken = params["access_token"]
-            if (!accessToken.isNullOrEmpty()) {
+            val tokenPart = url.substringAfter("access_token=", "").substringBefore("&")
+            val accessToken = Uri.decode(tokenPart)
+            if (accessToken.isNotEmpty()) {
                 val resultIntent = Intent().apply {
                     putExtra("ACCESS_TOKEN", accessToken)
                 }
                 setResult(Activity.RESULT_OK, resultIntent)
-            } else {
-                setResult(Activity.RESULT_CANCELED)
+                finish()
+                return
             }
         } catch (e: Exception) {
-            setResult(Activity.RESULT_CANCELED)
+            e.printStackTrace()
         }
+        setResult(Activity.RESULT_CANCELED)
         finish()
     }
 }
