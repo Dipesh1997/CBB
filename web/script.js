@@ -237,7 +237,38 @@ function showSection(id, param = null) {
     else fab.style.display='none';
 }
 
+function recalculateAllCustomerBalances() {
+    if (!appData.customers || !appData.transactions) return;
+
+    const computedMap = {};
+
+    appData.transactions.forEach(t => {
+        const cid = (t[1] || '').trim();
+        if (!cid) return;
+        const amt = parseFloat(t[2] || 0);
+        if (isNaN(amt)) return;
+
+        if (computedMap[cid] === undefined) {
+            computedMap[cid] = 0;
+        }
+
+        const type = (t[3] || '').toUpperCase();
+        if (type === 'DEBIT') {
+            computedMap[cid] += amt;
+        } else if (type === 'CREDIT') {
+            computedMap[cid] -= amt;
+        }
+    });
+
+    appData.customers.forEach(cust => {
+        const cid = (cust[8] || '').trim();
+        const calcBal = computedMap[cid] !== undefined ? computedMap[cid] : 0;
+        cust[4] = calcBal.toString();
+    });
+}
+
 function renderAll() {
+    recalculateAllCustomerBalances();
     let tr = 0, ta = 0, badDebtCount = 0, highOverdueCount = 0;
     appData.customers.forEach(row => {
         const b = parseFloat(row[4] || 0);
