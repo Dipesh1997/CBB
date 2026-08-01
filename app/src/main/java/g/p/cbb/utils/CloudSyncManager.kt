@@ -299,21 +299,29 @@ class CloudSyncManager @Inject constructor(
     }
 
     private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String) {
-        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A2:I").execute().getValues() ?: return
+        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A2:Z").execute().getValues() ?: return
         rows.forEach { row ->
-            if (row.size < 9) return@forEach
-            val sid = row.getOrNull(8)?.toString()?.trim() ?: return@forEach
-            val last = row.getOrNull(7)?.toString()?.toLongOrNull() ?: 0L
-            val local = customerDao.getCustomerByServerId(sid)
-            if (local == null || last > local.lastUpdated) {
+            if (row.size < 2) return@forEach
+            val idStr = row.getOrNull(0)?.toString()?.trim() ?: return@forEach
+            val name = row.getOrNull(1)?.toString()?.trim() ?: return@forEach
+            val phone = row.getOrNull(2)?.toString()?.trim() ?: ""
+            val address = row.getOrNull(3)?.toString()?.trim() ?: ""
+            val totalBalance = row.getOrNull(4)?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+            val isBadDebt = row.getOrNull(5)?.toString()?.trim()?.lowercase() == "true"
+            val createdBy = row.getOrNull(6)?.toString()?.trim() ?: "unknown"
+            val last = row.getOrNull(7)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
+            val sid = row.getOrNull(8)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "cust_$idStr"
+
+            val local = customerDao.getCustomerByServerId(sid) ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
+            if (local == null || last >= local.lastUpdated) {
                 val customer = Customer(
                     id = local?.id ?: 0,
-                    name = row.getOrNull(1)?.toString() ?: "Unknown",
-                    phone = row.getOrNull(2)?.toString() ?: "",
-                    address = row.getOrNull(3)?.toString() ?: "",
-                    totalBalance = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0,
-                    isBadDebt = row.getOrNull(5)?.toString()?.toBoolean() ?: false,
-                    createdBy = row.getOrNull(6)?.toString() ?: "unknown",
+                    name = name,
+                    phone = phone,
+                    address = address,
+                    totalBalance = totalBalance,
+                    isBadDebt = isBadDebt,
+                    createdBy = createdBy,
                     lastUpdated = last,
                     syncStatus = 0,
                     serverId = sid
@@ -324,29 +332,43 @@ class CloudSyncManager @Inject constructor(
     }
 
     private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String) {
-        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:M").execute().getValues() ?: return
+        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:Z").execute().getValues() ?: return
         rows.forEach { row ->
-            if (row.size < 13) return@forEach
-            val sid = row.getOrNull(12)?.toString()?.trim() ?: return@forEach
-            val last = row.getOrNull(11)?.toString()?.toLongOrNull() ?: 0L
+            if (row.size < 4) return@forEach
+            val txIdStr = row.getOrNull(0)?.toString()?.trim() ?: return@forEach
             val cid = row.getOrNull(1)?.toString()?.trim() ?: return@forEach
-            val cust = customerDao.getCustomerByServerId(cid) ?: return@forEach
+            
+            val cust = customerDao.getCustomerByServerId(cid)
+                ?: customerDao.getCustomersListSync().find { it.id.toString() == cid || it.serverId == cid }
+                ?: return@forEach
+
+            val amount = row.getOrNull(2)?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+            val typeStr = row.getOrNull(3)?.toString()?.trim() ?: "DEBIT"
+            val type = try { TransactionType.valueOf(typeStr.uppercase()) } catch (e: Exception) { TransactionType.DEBIT }
+            val timestamp = row.getOrNull(4)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
+            val note = row.getOrNull(5)?.toString() ?: ""
+            val driveFileId = row.getOrNull(8)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            val parentServerId = row.getOrNull(9)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            val createdBy = row.getOrNull(10)?.toString()?.trim() ?: "unknown"
+            val last = row.getOrNull(11)?.toString()?.trim()?.toLongOrNull() ?: timestamp
+            val sid = row.getOrNull(12)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "tx_$txIdStr"
+
             val local = transactionDao.getTransactionByServerId(sid)
-            if (local == null || last > local.lastUpdated) {
+            if (local == null || last >= local.lastUpdated) {
                 val tx = Transaction(
                     id = local?.id ?: 0,
                     customerId = cust.id,
-                    amount = row.getOrNull(2)?.toString()?.toDoubleOrNull() ?: 0.0,
-                    type = try { TransactionType.valueOf(row.getOrNull(3)?.toString() ?: "DEBIT") } catch (e: Exception) { TransactionType.DEBIT },
-                    timestamp = row.getOrNull(4)?.toString()?.toLongOrNull() ?: 0L,
-                    note = row.getOrNull(5)?.toString() ?: "",
+                    amount = amount,
+                    type = type,
+                    timestamp = timestamp,
+                    note = note,
                     attachmentPath = null,
-                    createdBy = row.getOrNull(10)?.toString() ?: "unknown",
+                    createdBy = createdBy,
                     lastUpdated = last,
                     syncStatus = 0,
                     serverId = sid,
-                    driveFileId = row.getOrNull(8)?.toString()?.takeIf { it.isNotEmpty() },
-                    parentServerId = row.getOrNull(9)?.toString()?.takeIf { it.isNotEmpty() }
+                    driveFileId = driveFileId,
+                    parentServerId = parentServerId
                 )
                 transactionDao.insertTransaction(tx)
             }

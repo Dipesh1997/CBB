@@ -55,6 +55,12 @@ class CbbViewModel @Inject constructor(
         performSync(isManual = true)
     }
 
+    fun pickAccount() {
+        viewModelScope.launch {
+            _syncEvents.emit(SyncEvent.PickAccount)
+        }
+    }
+
     private fun performSync(isManual: Boolean) {
         viewModelScope.launch {
             try {

@@ -56,18 +56,28 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .clickable { viewModel.pickAccount() }
+                            .padding(vertical = 4.dp)
+                    ) {
                         Text(
                             text = "Udaari Ledger",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        if (!userEmail.isNullOrBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = userEmail ?: "",
+                                text = userEmail ?: "Tap to select account",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Switch Account",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
