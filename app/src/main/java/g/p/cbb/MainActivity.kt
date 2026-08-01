@@ -5,6 +5,7 @@ import android.accounts.AccountManager
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.viewModels
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,15 +36,36 @@ import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val viewModel: CbbViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        handleOAuthRedirect(intent)
         enableEdgeToEdge()
         setContent {
             CBBTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    CbbApp()
+                    CbbApp(viewModel = viewModel)
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleOAuthRedirect(intent)
+    }
+
+    private fun handleOAuthRedirect(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        val urlString = data.toString()
+        if (urlString.contains("access_token=")) {
+            val tokenPart = urlString.substringAfter("access_token=", "").substringBefore("&")
+            val accessToken = android.net.Uri.decode(tokenPart)
+            if (accessToken.isNotEmpty()) {
+                viewModel.saveOAuthToken(accessToken)
+                android.widget.Toast.makeText(this, "Google Sign-In Authorized!", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -56,10 +78,9 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 }
 
 @Composable
-fun CbbApp() {
+fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val navController = rememberNavController()
-    val viewModel: CbbViewModel = hiltViewModel()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val unreadCount by viewModel.unreadHistoryCount.collectAsState(initial = 0)
@@ -91,23 +112,21 @@ fun CbbApp() {
         }
     }
 
-    val webOAuthLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val token = result.data?.getStringExtra("ACCESS_TOKEN")
-            if (!token.isNullOrEmpty()) {
-                viewModel.saveOAuthToken(token)
-            }
-        }
-    }
-
     LaunchedEffect(viewModel.syncEvents) {
         viewModel.syncEvents.collect { event ->
             when (event) {
                 is CbbViewModel.SyncEvent.LaunchWebOAuth -> {
-                    val intent = android.content.Intent(context, g.p.cbb.ui.GoogleOAuthActivity::class.java)
-                    webOAuthLauncher.launch(intent)
+                    val clientId = "812006416646-frvukuj4l9sqmishlsv2kp7clckd2vbd.apps.googleusercontent.com"
+                    val redirectUri = "g.p.cbb://oauth2redirect"
+                    val scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+                    val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
+                            "client_id=$clientId&" +
+                            "redirect_uri=${android.net.Uri.encode(redirectUri)}&" +
+                            "response_type=token&" +
+                            "scope=${android.net.Uri.encode(scopes)}&" +
+                            "prompt=select_account"
+                    val browserIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(authUrl))
+                    context.startActivity(browserIntent)
                 }
                 is CbbViewModel.SyncEvent.PickAccount -> {
                     val intent = AccountManager.newChooseAccountIntent(
