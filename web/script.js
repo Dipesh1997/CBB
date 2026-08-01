@@ -149,12 +149,37 @@ async function loadDashboardData() {
 }
 
 // UI Rendering
-function showSection(sectionId) {
+function showSection(sectionId, param = null) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
 
     document.getElementById(sectionId).classList.add('active');
-    document.getElementById('nav-' + sectionId).classList.add('active');
+    const navBtn = document.getElementById('nav-' + sectionId);
+    if (navBtn) navBtn.classList.add('active');
+
+    // Handle Global FAB
+    const fab = document.getElementById('global-fab');
+    const fabIcon = document.getElementById('fab-icon');
+
+    if (sectionId === 'customers') {
+        fab.style.display = 'flex';
+        fabIcon.textContent = 'person_add';
+        fab.onclick = () => showModal('customer');
+    } else if (sectionId === 'customer-ledger') {
+        fab.style.display = 'flex';
+        fabIcon.textContent = 'add';
+        fab.onclick = () => showModal('transaction', param); // param is serverId
+    } else if (sectionId === 'transactions') {
+        fab.style.display = 'flex';
+        fabIcon.textContent = 'add';
+        fab.onclick = () => showModal('transaction');
+    } else if (sectionId === 'catalog') {
+        fab.style.display = 'flex';
+        fabIcon.textContent = 'add';
+        fab.onclick = () => showModal('catalog');
+    } else {
+        fab.style.display = 'none';
+    }
 }
 
 function renderAll() {
@@ -205,10 +230,13 @@ function renderCustomers(filter = '') {
 }
 
 function showCustomerLedger(serverId) {
-    const customer = appData.customers.find(c => c[8] === serverId);
-    if (!customer) return;
+    const customer = appData.customers.find(c => c[8] && c[8].trim() === serverId.trim());
+    if (!customer) {
+        console.error("Customer not found for ID:", serverId);
+        return;
+    }
 
-    showSection('customer-ledger');
+    showSection('customer-ledger', serverId);
     document.getElementById('ledger-title').textContent = `${customer[1]}'s Ledger`;
 
     const info = document.getElementById('ledger-customer-info');
@@ -220,7 +248,6 @@ function showCustomerLedger(serverId) {
     `;
 
     document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(serverId);
-    document.getElementById('ledger-add-tx-btn').onclick = () => showModal('transaction', serverId);
     renderCustomerLedger(serverId);
 }
 
@@ -228,29 +255,33 @@ function renderCustomerLedger(serverId) {
     const tbody = document.querySelector('#ledger-table tbody');
     tbody.innerHTML = '';
 
+    const targetId = serverId.trim();
     const transactions = appData.transactions
-        .filter(tx => tx[1] && tx[1].trim() === serverId.trim())
+        .filter(tx => tx[1] && tx[1].trim() === targetId)
         .sort((a, b) => {
             const timeA = parseInt(a[4]) || 0;
             const timeB = parseInt(b[4]) || 0;
             return timeB - timeA;
         });
 
+    console.log(`Rendering ledger for ${targetId}. Found ${transactions.length} transactions.`);
+
     if (transactions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px;">No transactions found for this customer.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--outline);">No transactions found for this customer.</td></tr>';
         return;
     }
 
     transactions.forEach(row => {
         const tr = document.createElement('tr');
-        const hasPhoto = row[8] && row[8].trim() !== '';
+        const driveId = (row[8] || '').trim();
+        const hasPhoto = driveId !== '';
         tr.innerHTML = `
             <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
             <td>${row[3]}</td>
             <td style="color: ${row[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${row[2]}</td>
             <td>${row[5] || ''}</td>
             <td style="text-align: right;">
-                ${hasPhoto ? `<a href="https://drive.google.com/file/d/${row[8]}/view" target="_blank" class="material-icons action-icon">image</a>` : '-'}
+                ${hasPhoto ? `<a href="https://drive.google.com/file/d/${driveId}/view" target="_blank" class="material-icons action-icon">image</a>` : '-'}
             </td>
         `;
         tbody.appendChild(tr);

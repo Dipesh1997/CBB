@@ -80,7 +80,6 @@
                     <h2>Customers</h2>
                     <div style="display: flex; gap: 12px;">
                         <input type="text" id="customer-search" class="search-bar" placeholder="Search customers..." style="max-width: 200px; margin-bottom: 0;" onkeyup="filterCustomers()">
-                        <button class="fab" onclick="showModal('customer')"><span class="material-icons">person_add</span></button>
                     </div>
                 </div>
                 <div class="card">
@@ -102,7 +101,6 @@
             <section id="transactions" class="section">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Transaction History</h2>
-                    <button class="fab" onclick="showModal('transaction')"><span class="material-icons">add</span></button>
                 </div>
                 <div class="card">
                     <table id="transactions-table">
@@ -124,7 +122,6 @@
             <section id="catalog" class="section">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Product Catalog</h2>
-                    <button class="fab" onclick="showModal('catalog')"><span class="material-icons">add</span></button>
                 </div>
                 <div class="card">
                     <table id="catalog-table">
@@ -152,7 +149,6 @@
                             <span class="material-icons" style="font-size: 18px; vertical-align: middle; margin-right: 4px;">picture_as_pdf</span>
                             Export PDF
                         </button>
-                        <button class="fab" id="ledger-add-tx-btn"><span class="material-icons">add</span></button>
                     </div>
                 </div>
 
@@ -207,5 +203,9 @@
     </style>
 
     <script src="script.js"></script>
+    <!-- Global FAB -->
+    <button id="global-fab" class="fab fixed-fab" style="display: none;">
+        <span class="material-icons" id="fab-icon">add</span>
+    </button>
 </body>
 </html>
