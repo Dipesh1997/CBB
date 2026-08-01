@@ -31,7 +31,8 @@ data class Transaction(
     val lastUpdated: Long = System.currentTimeMillis(),
     val syncStatus: Int = 1,
     val serverId: String? = null,
-    val driveFileId: String? = null
+    val driveFileId: String? = null,
+    val parentServerId: String? = null
 )
 
 enum class TransactionType {

@@ -6,13 +6,11 @@ let gapiInited = false;
 let gisInited = false;
 let databaseId = null;
 let currentModalType = null;
-let currentEditId = null;
+let currentEditId = null; // Can be ServerID of record or CustomerServerID if adding new bill for specific customer
 
 let appData = {
     customers: [],
-    transactions: [],
-    catalog: [],
-    billItems: []
+    transactions: []
 };
 
 // UUID Helper
@@ -24,39 +22,20 @@ function generateUUID() {
 }
 
 // Initialize GAPI and GIS
-function gapiLoaded() {
-    gapi.load('client', initializeGapiClient);
-}
-
+function gapiLoaded() { gapi.load('client', initializeGapiClient); }
 async function initializeGapiClient() {
-    await gapi.client.init({
-        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    });
+    await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
     gapiInited = true;
     maybeEnableButtons();
 }
-
 function gisLoaded() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: '', // defined later
-    });
+    tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '' });
     gisInited = true;
     maybeEnableButtons();
 }
+function maybeEnableButtons() { if (gapiInited && gisInited) console.log("System Ready"); }
 
-function maybeEnableButtons() {
-    if (gapiInited && gisInited) {
-        console.log("System Ready");
-    }
-}
-
-// Window load listeners
-window.onload = () => {
-    gapiLoaded();
-    gisLoaded();
-};
+window.onload = () => { gapiLoaded(); gisLoaded(); };
 
 // Auth Handlers
 function handleCredentialResponse(response) {
@@ -67,24 +46,17 @@ function handleCredentialResponse(response) {
     document.getElementById('user-name').textContent = payload.name;
     document.getElementById('user-pic').src = payload.picture;
 
-    // Request access token for Sheets API
     tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-            throw (resp);
-        }
+        if (resp.error !== undefined) throw (resp);
         await loadDashboardData();
     };
 
-    if (gapi.client.getToken() === null) {
-        tokenClient.requestAccessToken({prompt: 'consent'});
-    } else {
-        tokenClient.requestAccessToken({prompt: ''});
-    }
+    if (gapi.client.getToken() === null) tokenClient.requestAccessToken({prompt: 'consent'});
+    else tokenClient.requestAccessToken({prompt: ''});
 }
 
 function decodeJwt(token) {
-    var base64Url = token.split('.')[1];
-    var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    var base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     var jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
@@ -101,9 +73,7 @@ function handleSignOut() {
 }
 
 function getErrorMessage(err) {
-    if (err && err.result && err.result.error && err.result.error.message) {
-        return err.result.error.message;
-    }
+    if (err && err.result && err.result.error && err.result.error.message) return err.result.error.message;
     if (err && err.message) return err.message;
     return "Unknown Error";
 }
@@ -113,44 +83,23 @@ async function loadDashboardData() {
     showLoader(true);
     try {
         const response = await gapi.client.drive.files.list({
-            q: "name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet'",
+            q: "name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
             fields: 'files(id, name)',
         });
-
         if (response.result.files.length === 0) {
-            alert("Could not find 'Udaari_Database' spreadsheet in your Google Drive.");
-            showLoader(false);
-            return;
+            alert("Spreadsheet 'Udaari_Database' not found. Please sync from Android app first.");
+            showLoader(false); return;
         }
-
         databaseId = response.result.files[0].id;
-
-        const ranges = ['Customers!A2:I', 'Transactions!A2:L', 'Catalog!A2:H', 'BillItems!A2:F'];
-        const dataResponse = await gapi.client.sheets.spreadsheets.values.batchGet({
-            spreadsheetId: databaseId,
-            ranges: ranges,
-        });
-
+        const ranges = ['Customers!A2:I', 'Transactions!A2:M'];
+        const dataResponse = await gapi.client.sheets.spreadsheets.values.batchGet({ spreadsheetId: databaseId, ranges: ranges });
         const valueRanges = dataResponse.result.valueRanges;
         appData.customers = valueRanges[0].values || [];
         appData.transactions = valueRanges[1].values || [];
-        appData.catalog = valueRanges[2].values || [];
-        appData.billItems = valueRanges[3].values || [];
 
         renderAll();
-
-        // If ledger is active, refresh it. Otherwise show home.
-        const ledgerActive = document.getElementById('customer-ledger').classList.contains('active');
-        if (ledgerActive) {
-            // currentEditId might be customer ID or transaction ID.
-            // In ledger mode, showCustomerLedger stores the CID.
-        } else {
-            showSection('home');
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Error fetching data: " + getErrorMessage(err));
-    }
+        if (!document.getElementById('customer-ledger').classList.contains('active')) showSection('home');
+    } catch (err) { alert("Error fetching data: " + getErrorMessage(err)); }
     showLoader(false);
 }
 
@@ -158,127 +107,92 @@ async function loadDashboardData() {
 function showSection(sectionId, param = null) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-
     const target = document.getElementById(sectionId);
     if (target) target.classList.add('active');
+    const navBtn = document.getElementById('nav-' + (sectionId === 'customer-ledger' ? 'home' : sectionId));
+    if (navBtn) navBtn.classList.add('active');
 
-    // Nav highlight logic: highlight Home if on home or ledger
-    const homeActive = (sectionId === 'home' || sectionId === 'customer-ledger');
-    if (homeActive) document.getElementById('nav-home').classList.add('active');
-    else if (document.getElementById('nav-' + sectionId)) document.getElementById('nav-' + sectionId).classList.add('active');
-
-    // Handle Global FAB
     const fab = document.getElementById('global-fab');
     const fabIcon = document.getElementById('fab-icon');
-
     if (sectionId === 'home') {
-        fab.style.display = 'flex';
-        fabIcon.textContent = 'person_add';
+        fab.style.display = 'flex'; fabIcon.textContent = 'person_add';
         fab.onclick = () => showModal('customer');
     } else if (sectionId === 'customer-ledger') {
-        fab.style.display = 'flex';
-        fabIcon.textContent = 'add';
-        fab.onclick = () => showModal('transaction', param); // param is serverId
+        fab.style.display = 'flex'; fabIcon.textContent = 'add';
+        fab.onclick = () => showModal('transaction', param);
     } else if (sectionId === 'transactions') {
-        fab.style.display = 'flex';
-        fabIcon.textContent = 'add';
+        fab.style.display = 'flex'; fabIcon.textContent = 'add';
         fab.onclick = () => showModal('transaction');
-    } else if (sectionId === 'catalog') {
-        fab.style.display = 'flex';
-        fabIcon.textContent = 'add';
-        fab.onclick = () => showModal('catalog');
-    } else {
-        fab.style.display = 'none';
-    }
+    } else { fab.style.display = 'none'; }
 }
 
 function renderAll() {
     renderOverview();
     renderCustomers();
     renderTransactions();
-    renderCatalog();
 }
 
 function renderOverview() {
-    let totalReceivable = 0;
-    let totalAdvance = 0;
-
+    let totalRec = 0, totalAdv = 0;
     appData.customers.forEach(row => {
-        const balance = parseFloat(row[4] || 0);
-        if (balance > 0) totalReceivable += balance;
-        else totalAdvance += Math.abs(balance);
+        const bal = parseFloat(row[4] || 0);
+        if (bal > 0) totalRec += bal; else totalAdv += Math.abs(bal);
     });
-
-    document.getElementById('total-receivable').textContent = `₹ ${totalReceivable.toLocaleString('en-IN')}`;
-    document.getElementById('total-advance').textContent = `₹ ${totalAdvance.toLocaleString('en-IN')}`;
+    document.getElementById('total-receivable').textContent = `₹ ${totalRec.toLocaleString('en-IN')}`;
+    document.getElementById('total-advance').textContent = `₹ ${totalAdv.toLocaleString('en-IN')}`;
 }
 
 function renderCustomers(filter = '') {
     const tbody = document.querySelector('#customers-table tbody');
     tbody.innerHTML = '';
-
-    appData.customers
-        .filter(row => row[1].toLowerCase().includes(filter.toLowerCase()))
-        .forEach(row => {
-            const tr = document.createElement('tr');
-            const balance = parseFloat(row[4] || 0);
-            const serverId = row[8];
-            tr.innerHTML = `
-                <td><span class="clickable-name" onclick="showCustomerLedger('${serverId}')">${row[1]}</span></td>
-                <td>${row[2]}</td>
-                <td style="color: ${balance >= 0 ? 'green' : 'red'}">₹ ${balance}</td>
-                <td>${row[5] === 'TRUE' ? '<span style="color:red">Bad Debt</span>' : 'Active'}</td>
-                <td style="text-align: right;">
-                    <span class="material-icons action-icon" onclick="showModal('customer', '${serverId}')">edit</span>
-                    <span class="material-icons action-icon delete" onclick="deleteItem('Customers', '${serverId}')">delete</span>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+    appData.customers.filter(row => row[1].toLowerCase().includes(filter.toLowerCase())).forEach(row => {
+        const bal = parseFloat(row[4] || 0);
+        const sid = row[8];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><span class="clickable-name" onclick="showCustomerLedger('${sid}')">${row[1]}</span></td>
+            <td>${row[2]}</td>
+            <td style="color: ${bal >= 0 ? '#B71C1C' : '#1B5E20'}; font-weight: 700">₹ ${bal}</td>
+            <td>${row[5] === 'TRUE' ? '<span style="color:red">Bad Debt</span>' : 'Active'}</td>
+            <td style="text-align: right;">
+                <span class="material-icons action-icon" onclick="showModal('customer', '${sid}')">edit</span>
+                <span class="material-icons action-icon delete" onclick="deleteItem('Customers', '${sid}')">delete</span>
+            </td>`;
+        tbody.appendChild(tr);
+    });
 }
 
-function filterCustomers() {
-    const query = document.getElementById('customer-search').value;
-    renderCustomers(query);
-}
+function filterCustomers() { renderCustomers(document.getElementById('customer-search').value); }
 
-function showCustomerLedger(serverId) {
-    const customer = appData.customers.find(c => c[8] && c[8].trim() === serverId.trim());
+function showCustomerLedger(sid) {
+    const customer = appData.customers.find(c => c[8] && c[8].trim() === sid.trim());
     if (!customer) return;
-
-    showSection('customer-ledger', serverId);
+    showSection('customer-ledger', sid);
     document.getElementById('ledger-title').textContent = `${customer[1]}'s Ledger`;
-
     const info = document.getElementById('ledger-customer-info');
-    const balance = parseFloat(customer[4] || 0);
+    const bal = parseFloat(customer[4] || 0);
     info.innerHTML = `
         <div><span class="label">Phone</span><span class="value">${customer[2]}</span></div>
         <div><span class="label">Address</span><span class="value">${customer[3] || 'N/A'}</span></div>
-        <div><span class="label">Current Balance</span><span class="value" style="color: ${balance >= 0 ? 'green' : 'red'}">₹ ${balance}</span></div>
+        <div><span class="label">Balance</span><span class="value" style="color: ${bal >= 0 ? '#B71C1C' : '#1B5E20'}">₹ ${bal}</span></div>
     `;
-
-    document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(serverId);
-    renderCustomerLedger(serverId);
+    document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(sid);
+    renderCustomerLedger(sid);
 }
 
-function renderCustomerLedger(serverId) {
+function renderCustomerLedger(sid) {
     const tbody = document.querySelector('#ledger-table tbody');
     tbody.innerHTML = '';
-
-    const targetId = serverId.trim();
-    const transactions = appData.transactions
-        .filter(tx => tx[1] && tx[1].trim() === targetId)
-        .sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
-
-    if (transactions.length === 0) {
+    const targetId = sid.trim();
+    const txs = appData.transactions.filter(tx => tx[1] && tx[1].trim() === targetId).sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
+    if (txs.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--outline);">No transactions found.</td></tr>';
         return;
     }
-
-    transactions.forEach(row => {
+    txs.forEach(row => {
         const tr = document.createElement('tr');
         const driveId = (row[8] || '').trim();
-        const tid = row[11];
+        const tid = row[12];
         tr.innerHTML = `
             <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
             <td>${row[3]}</td>
@@ -287,54 +201,11 @@ function renderCustomerLedger(serverId) {
             <td style="text-align: right;">
                 <span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span>
                 <span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>
-                ${driveId ? `<a href="https://drive.google.com/file/d/${driveId}/view" target="_blank" class="material-icons action-icon">image</a>` : ''}
+                ${driveId ? `<img src="https://drive.google.com/thumbnail?id=${driveId}" class="thumbnail" onclick="viewFullscreen('${driveId}')">` : ''}
                 <span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span>
-            </td>
-        `;
+            </td>`;
         tbody.appendChild(tr);
     });
-}
-
-function exportCustomerPdf(serverId) {
-    const customer = appData.customers.find(c => c[8] === serverId);
-    if (!customer) return;
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    doc.setFontSize(22);
-    doc.text("Customer Statement", 14, 20);
-    doc.setFontSize(12);
-    doc.text(`Udaari Ledger - Generated on ${new Date().toLocaleDateString()}`, 14, 28);
-
-    doc.line(14, 32, 196, 32);
-    doc.setFont("helvetica", "bold");
-    doc.text("Customer Details:", 14, 42);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Name: ${customer[1]}`, 14, 50);
-    doc.text(`Phone: ${customer[2]}`, 14, 58);
-    doc.text(`Current Balance: Rs. ${customer[4]}`, 14, 66);
-    doc.line(14, 72, 196, 72);
-
-    const transactions = appData.transactions
-        .filter(tx => tx[1] === serverId)
-        .sort((a, b) => parseInt(a[4]) - parseInt(b[4]))
-        .map(tx => [
-            new Date(parseInt(tx[4])).toLocaleDateString(),
-            tx[3],
-            `Rs. ${tx[2]}`,
-            tx[5] || ''
-        ]);
-
-    doc.autoTable({
-        startY: 80,
-        head: [['Date', 'Type', 'Amount', 'Note']],
-        body: transactions,
-        theme: 'striped',
-        headStyles: { fillColor: [103, 80, 164] }
-    });
-
-    doc.save(`Statement_${customer[1]}_${Date.now()}.pdf`);
 }
 
 function renderTransactions() {
@@ -342,53 +213,35 @@ function renderTransactions() {
     tbody.innerHTML = '';
     const sorted = [...appData.transactions].sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
     sorted.slice(0, 50).forEach(row => {
+        const cust = appData.customers.find(c => c[8] === row[1]);
+        const driveId = (row[8] || '').trim();
+        const tid = row[12];
         const tr = document.createElement('tr');
-        const customer = appData.customers.find(c => c[8] === row[1]);
-        const customerName = customer ? customer[1] : 'Unknown';
-        const tid = row[11];
         tr.innerHTML = `
             <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
-            <td>${customerName}</td>
+            <td>${cust ? cust[1] : 'Unknown'}</td>
             <td style="color: ${row[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${row[2]}</td>
             <td>${row[3]}</td>
             <td>${row[5] || ''}</td>
             <td style="text-align: right;">
                 <span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span>
                 <span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>
+                ${driveId ? `<img src="https://drive.google.com/thumbnail?id=${driveId}" class="thumbnail" onclick="viewFullscreen('${driveId}')">` : ''}
                 <span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-function renderCatalog() {
-    const tbody = document.querySelector('#catalog-table tbody');
-    tbody.innerHTML = '';
-    appData.catalog.forEach(row => {
-        const tr = document.createElement('tr');
-        const sid = row[7];
-        tr.innerHTML = `
-            <td>${row[1]}</td>
-            <td>₹ ${row[2]}</td>
-            <td>${row[4]}</td>
-            <td style="text-align: right;">
-                <span class="material-icons action-icon" onclick="showModal('catalog', '${sid}')">edit</span>
-                <span class="material-icons action-icon delete" onclick="deleteItem('Catalog', '${sid}')">delete</span>
-            </td>
-        `;
+            </td>`;
         tbody.appendChild(tr);
     });
 }
 
 // Modal Logic
 function showModal(type, id = null) {
-    currentModalType = type;
-    currentEditId = id;
+    currentModalType = type; currentEditId = id;
     const modal = document.getElementById('modal-overlay');
     const title = document.getElementById('modal-title');
     const fields = document.getElementById('form-fields');
     fields.innerHTML = '';
+    document.getElementById('image-preview-container').style.display = 'none';
+    document.getElementById('confirm-replace-text').style.display = 'none';
 
     const data = id ? findRecord(type, id) : null;
 
@@ -397,47 +250,45 @@ function showModal(type, id = null) {
         fields.innerHTML = `
             <div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div>
             <div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div>
-            <div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>
-        `;
+            <div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
         title.textContent = data ? 'Edit Transaction' : 'Add Transaction';
-        let preselectedCust = '';
-        if (data) preselectedCust = data[1];
-        else if (document.getElementById('customer-ledger').classList.contains('active')) preselectedCust = id;
-
-        const customerOptions = appData.customers.map(c =>
-            `<option value="${c[8]}" ${c[8] === preselectedCust ? 'selected' : ''}>${c[1]}</option>`
-        ).join('');
-
+        let preselectedCust = data ? data[1] : (document.getElementById('customer-ledger').classList.contains('active') ? id : '');
+        const options = appData.customers.map(c => `<option value="${c[8]}" ${c[8] === preselectedCust ? 'selected' : ''}>${c[1]}</option>`).join('');
         fields.innerHTML = `
-            <div class="form-group"><label>Customer</label><select id="tx-cust" required>${customerOptions}</select></div>
+            <div class="form-group"><label>Customer</label><select id="tx-cust" required>${options}</select></div>
             <div class="form-group"><label>Amount</label><input type="number" id="tx-amount" step="0.01" value="${data ? data[2] : ''}" required></div>
             <div class="form-group"><label>Type</label><select id="tx-type">
                 <option value="DEBIT" ${data && data[3] === 'DEBIT' ? 'selected' : ''}>YOU GAVE (Debit)</option>
                 <option value="CREDIT" ${data && data[3] === 'CREDIT' ? 'selected' : ''}>YOU GOT (Credit)</option>
             </select></div>
             <div class="form-group"><label>Note</label><input type="text" id="tx-note" value="${data ? data[5] : ''}"></div>
-            <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*"></div>
-        `;
-    } else if (type === 'catalog') {
-        title.textContent = data ? 'Edit Catalog Item' : 'Add Product';
-        fields.innerHTML = `
-            <div class="form-group"><label>Name</label><input type="text" id="cat-name" value="${data ? data[1] : ''}" required></div>
-            <div class="form-group"><label>Price</label><input type="number" id="cat-price" step="0.01" value="${data ? data[2] : ''}" required></div>
-            <div class="form-group"><label>Units</label><input type="text" id="cat-units" value="${data ? data[4] : ''}"></div>
-        `;
+            <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*" onchange="previewImage(this)"></div>`;
+        if (data && data[8]) {
+            document.getElementById('img-preview').src = `https://drive.google.com/thumbnail?id=${data[8]}`;
+            document.getElementById('image-preview-container').style.display = 'block';
+        }
     }
     modal.style.display = 'flex';
 }
 
-function hideModal() {
-    document.getElementById('modal-overlay').style.display = 'none';
+function previewImage(input) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        document.getElementById('img-preview').src = e.target.result;
+        document.getElementById('image-preview-container').style.display = 'block';
+        if (currentEditId && findRecord(currentModalType, currentEditId)[8]) {
+            document.getElementById('confirm-replace-text').style.display = 'block';
+        }
+    };
+    if (input.files[0]) reader.readAsDataURL(input.files[0]);
 }
+
+function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 
 function findRecord(type, id) {
     if (type === 'customer') return appData.customers.find(c => c[8] === id);
-    if (type === 'catalog') return appData.catalog.find(c => c[7] === id);
-    if (type === 'transaction') return appData.transactions.find(t => t[11] === id);
+    if (type === 'transaction') return appData.transactions.find(t => t[12] === id);
     return null;
 }
 
@@ -445,29 +296,21 @@ function findRecord(type, id) {
 async function handleFormSubmit(e) {
     e.preventDefault();
     if (!databaseId) return;
-
     const onLedger = document.getElementById('customer-ledger').classList.contains('active');
-    const ledgerCustId = currentEditId; // If adding from ledger, currentEditId is CID
+    const ledgerCustId = document.getElementById('global-fab').onclick.toString().includes('transaction') ? currentEditId : null;
 
     showLoader(true);
     try {
         let lastId = currentEditId;
         if (currentModalType === 'customer') await saveCustomer();
         else if (currentModalType === 'transaction') lastId = await saveTransaction();
-        else if (currentModalType === 'catalog') await saveCatalogItem();
-
         await loadDashboardData();
-
         if (onLedger) {
-            // Find CID again to ensure data is fresh
-            const tx = appData.transactions.find(t => t[11] === lastId);
-            const cid = tx ? tx[1] : ledgerCustId;
-            showCustomerLedger(cid);
+            const tx = appData.transactions.find(t => t[12] === lastId);
+            showCustomerLedger(tx ? tx[1] : (ledgerCustId || ''));
         }
         hideModal();
-    } catch (err) {
-        alert("Error saving: " + getErrorMessage(err));
-    }
+    } catch (err) { alert("Error saving: " + getErrorMessage(err)); }
     showLoader(false);
 }
 
@@ -475,119 +318,74 @@ async function saveCustomer() {
     const name = document.getElementById('cust-name').value;
     const phone = document.getElementById('cust-phone').value;
     const address = document.getElementById('cust-address').value;
-    const serverId = currentEditId || generateUUID();
+    const sid = currentEditId || generateUUID();
     const existing = findRecord('customer', currentEditId);
-
-    const row = [
-        existing ? existing[0] : '0',
-        name, phone, address,
-        existing ? existing[4] : '0.0',
-        existing ? existing[5] : 'FALSE',
-        existing ? existing[6] : 'web-user',
-        Date.now().toString(),
-        serverId
-    ];
-    await updateOrAppendRow('Customers', serverId, row, 8);
+    const row = [ existing ? existing[0] : '0', name, phone, address, existing ? existing[4] : '0.0', existing ? existing[5] : 'FALSE', existing ? existing[6] : 'web-user', Date.now().toString(), sid ];
+    await updateOrAppendRow('Customers', sid, row, 8);
+    await logHistory(`${existing ? 'Updated' : 'Added'} Customer: ${name}`);
 }
 
 async function saveTransaction() {
-    const custServerId = document.getElementById('tx-cust').value;
-    const amount = parseFloat(document.getElementById('tx-amount').value);
+    const cid = document.getElementById('tx-cust').value;
+    const amt = document.getElementById('tx-amount').value;
     const type = document.getElementById('tx-type').value;
     const note = document.getElementById('tx-note').value;
-    const photoFile = document.getElementById('tx-photo').files[0];
-
+    const file = document.getElementById('tx-photo').files[0];
     const existing = findRecord('transaction', currentEditId);
-    const serverId = existing ? currentEditId : generateUUID();
+    const sid = existing ? currentEditId : generateUUID();
 
-    let driveFileId = existing ? existing[8] : '';
-    let imagePreview = existing ? existing[6] : '';
-    let viewLink = existing ? existing[7] : '';
-
-    if (photoFile) {
-        driveFileId = await uploadToDrive(photoFile);
-        imagePreview = `=IMAGE("https://drive.google.com/thumbnail?id=${driveFileId}")`;
-        viewLink = `=HYPERLINK("https://drive.google.com/file/d/${driveFileId}/view", "View Attachment")`;
+    let did = existing ? existing[8] : '', prev = existing ? existing[6] : '', view = existing ? existing[7] : '';
+    if (file) {
+        did = await uploadToDrive(file);
+        prev = `=IMAGE("https://drive.google.com/thumbnail?id=${did}")`;
+        view = `=HYPERLINK("https://drive.google.com/file/d/${did}/view", "View")`;
     }
+    const row = [ existing ? existing[0] : '0', cid, amt, type, existing ? existing[4] : Date.now().toString(), note, prev, view, did, existing ? existing[9] : '', existing ? existing[10] : 'web-user', Date.now().toString(), sid ];
+    await updateOrAppendRow('Transactions', sid, row, 12);
+    await updateCustomerBalance(cid);
+    const cust = appData.customers.find(c => c[8] === cid);
+    await logHistory(`${existing ? 'Updated' : 'Added'} ${type} of ₹${amt} for ${cust ? cust[1] : 'Unknown'}`);
+    return sid;
+}
 
-    const row = [
-        existing ? existing[0] : '0',
-        custServerId, amount.toString(), type,
-        existing ? existing[4] : Date.now().toString(),
-        note,
-        imagePreview, viewLink, driveFileId,
-        existing ? existing[9] : 'web-user',
-        Date.now().toString(), serverId
-    ];
-
-    await updateOrAppendRow('Transactions', serverId, row, 11);
-    await updateCustomerBalance(custServerId);
-    return serverId;
+async function logHistory(action) {
+    const row = [ '0', Date.now().toString(), action, 'TRUE', generateUUID() ];
+    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
 }
 
 async function uploadToDrive(file) {
-    const metadata = { name: `Udaari_${Date.now()}_${file.name}`, mimeType: file.type };
+    const meta = { name: `Udaari_${Date.now()}_${file.name}`, mimeType: file.type };
     const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
     form.append('file', file);
-    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: form,
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ? result.error.message : 'Drive Upload Failed');
-    return result.id;
+    const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: form });
+    const res = await resp.json();
+    if (!resp.ok) throw new Error(res.error ? res.error.message : 'Drive Upload Failed');
+    return res.id;
 }
 
-async function saveCatalogItem() {
-    const name = document.getElementById('cat-name').value;
-    const price = document.getElementById('cat-price').value;
-    const units = document.getElementById('cat-units').value;
-    const serverId = currentEditId || generateUUID();
-    const existing = findRecord('catalog', currentEditId);
-    const row = [ existing ? existing[0] : '0', name, price, '', units, 'web-user', Date.now().toString(), serverId ];
-    await updateOrAppendRow('Catalog', serverId, row, 7);
+async function updateOrAppendRow(sheet, sid, row, col) {
+    const vals = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${sheet}!A:Z` })).result.values;
+    let idx = -1;
+    if (vals) { for (let i = 0; i < vals.length; i++) { if (vals[i].length > col && vals[i][col] === sid) { idx = i + 1; break; } } }
+    if (idx !== -1) await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `${sheet}!A${idx}`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
+    else await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: `${sheet}!A1`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
 }
 
-async function updateOrAppendRow(sheetName, serverId, row, serverIdColIndex) {
-    const range = `${sheetName}!A:Z`;
-    const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: range });
-    const values = response.result.values;
-    let rowIndex = -1;
-    if (values) {
-        for (let i = 0; i < values.length; i++) {
-            if (values[i].length > serverIdColIndex && values[i][serverIdColIndex] === serverId) {
-                rowIndex = i + 1; break;
-            }
-        }
-    }
-    if (rowIndex !== -1) {
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: databaseId, range: `${sheetName}!A${rowIndex}`,
-            valueInputOption: 'USER_ENTERED', resource: { values: [row] }
-        });
-    } else {
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: databaseId, range: `${sheetName}!A1`,
-            valueInputOption: 'USER_ENTERED', resource: { values: [row] }
-        });
-    }
-}
-
-async function deleteItem(sheetName, serverId) {
-    if (!confirm("Are you sure you want to delete this?")) return;
+async function deleteItem(sheet, sid) {
+    if (!confirm("Are you sure?")) return;
     showLoader(true);
     try {
-        const colIndex = { 'Customers': 8, 'Transactions': 11, 'Catalog': 7 }[sheetName];
-        const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${sheetName}!A:Z` });
-        const values = response.result.values;
-        if (values) {
-            for (let i = 0; i < values.length; i++) {
-                if (values[i][colIndex] === serverId) {
-                    const rowData = values[i];
-                    const trashRow = [ `${sheetName} record deleted from Web`, sheetName.toLowerCase(), serverId, Date.now().toString(), JSON.stringify(rowData) ];
-                    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'Trash!A1', valueInputOption: 'USER_ENTERED', resource: { values: [trashRow] } });
-                    await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: databaseId, range: `${sheetName}!A${i+1}:Z${i+1}` });
-                    if (sheetName === 'Transactions') await updateCustomerBalance(rowData[1]);
+        const col = { 'Customers': 8, 'Transactions': 12 }[sheet];
+        const vals = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${sheet}!A:Z` })).result.values;
+        if (vals) {
+            for (let i = 0; i < vals.length; i++) {
+                if (vals[i][col] === sid) {
+                    const rowData = vals[i];
+                    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'Trash!A1', valueInputOption: 'USER_ENTERED', resource: { values: [[`Deleted from Web: ${sheet}`, sheet.toLowerCase(), sid, Date.now().toString(), JSON.stringify(rowData)]] } });
+                    await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: databaseId, range: `${sheet}!A${i+1}:Z${i+1}` });
+                    if (sheet === 'Transactions') await updateCustomerBalance(rowData[1]);
+                    await logHistory(`Deleted ${sheet} record: ${sid}`);
                     break;
                 }
             }
@@ -597,45 +395,41 @@ async function deleteItem(sheetName, serverId) {
     showLoader(false);
 }
 
-async function updateCustomerBalance(custServerId) {
-    const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Transactions!A2:L' });
-    const txs = response.result.values || [];
-    let balance = 0;
-    txs.forEach(tx => {
-        if (tx[1] && tx[1].trim() === custServerId.trim()) {
-            const amt = parseFloat(tx[2] || 0);
-            if (tx[3] === 'DEBIT') balance += amt; else balance -= amt;
-        }
-    });
-    const custResponse = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Customers!A:I' });
-    const customers = custResponse.result.values;
-    for (let i = 0; i < customers.length; i++) {
-        if (customers[i][8] && customers[i][8].trim() === custServerId.trim()) {
-            const updatedRow = [...customers[i]];
-            updatedRow[4] = balance.toString();
-            updatedRow[7] = Date.now().toString();
-            await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `Customers!A${i+1}`, valueInputOption: 'USER_ENTERED', resource: { values: [updatedRow] } });
-            break;
-        }
-    }
+async function updateCustomerBalance(cid) {
+    const txs = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Transactions!A2:M' })).result.values || [];
+    let bal = 0;
+    txs.forEach(tx => { if (tx[1] && tx[1].trim() === cid.trim()) { const a = parseFloat(tx[2] || 0); if (tx[3] === 'DEBIT') bal += a; else bal -= a; } });
+    const custs = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Customers!A:I' })).result.values;
+    for (let i = 0; i < custs.length; i++) { if (custs[i][8] && custs[i][8].trim() === cid.trim()) {
+        const row = [...custs[i]]; row[4] = bal.toString(); row[7] = Date.now().toString();
+        await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `Customers!A${i+1}`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
+        break;
+    } }
 }
 
-function shareTransaction(serverId) {
-    const tx = appData.transactions.find(t => t[11] === serverId);
-    const customer = appData.customers.find(c => c[8] === tx[1]);
-    if (!tx || !customer) return;
-    const text = `
-📜 *Udaari Ledger - Bill Details*
-----------------------------
-👤 *Customer:* ${customer[1]}
-💰 *Amount:* ₹${tx[2]}
-📝 *Type:* ${tx[3]}
-📅 *Date:* ${new Date(parseInt(tx[4])).toLocaleDateString()}
-📄 *Note:* ${tx[5] || 'N/A'}
-----------------------------
-Generated via Udaari Ledger Web`.trim();
-    if (navigator.share) navigator.share({ title: 'Bill Details', text: text }).catch(console.error);
-    else { navigator.clipboard.writeText(text).then(() => alert("Bill details copied to clipboard!")); }
+function shareTransaction(sid) {
+    const tx = appData.transactions.find(t => t[12] === sid);
+    const cust = appData.customers.find(c => c[8] === tx[1]);
+    const text = `📜 Udaari Ledger Bill\nCustomer: ${cust[1]}\nAmount: ₹${tx[2]}\nType: ${tx[3]}\nDate: ${new Date(parseInt(tx[4])).toLocaleDateString()}\nNote: ${tx[5] || 'N/A'}`;
+    if (navigator.share) navigator.share({ title: 'Bill', text: text });
+    else { navigator.clipboard.writeText(text); alert("Copied to clipboard!"); }
+}
+
+function viewFullscreen(did) {
+    document.getElementById('fs-img').src = `https://drive.google.com/file/d/${did}/view?usp=sharing`.replace('/view', '/uc');
+    document.getElementById('fs-viewer').style.display = 'flex';
 }
 
 function showLoader(show) { document.getElementById('loader').style.display = show ? 'flex' : 'none'; }
+
+function exportCustomerPdf(sid) {
+    const customer = appData.customers.find(c => c[8] === sid);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text("Customer Statement", 14, 20);
+    doc.text(`Name: ${customer[1]}`, 14, 30);
+    doc.text(`Balance: Rs. ${customer[4]}`, 14, 40);
+    const data = appData.transactions.filter(tx => tx[1] === sid).map(tx => [new Date(parseInt(tx[4])).toLocaleDateString(), tx[3], `Rs. ${tx[2]}`, tx[5] || '']);
+    doc.autoTable({ startY: 50, head: [['Date', 'Type', 'Amount', 'Note']], body: data });
+    doc.save(`Statement_${customer[1]}.pdf`);
+}

@@ -19,10 +19,8 @@ object GoogleSheetsHelper {
         val requests = mutableListOf<Request>()
         if (!existingTitles.contains(CUSTOMERS_SHEET)) requests.add(addSheetRequest(CUSTOMERS_SHEET))
         if (!existingTitles.contains(TRANSACTIONS_SHEET)) requests.add(addSheetRequest(TRANSACTIONS_SHEET))
-        if (!existingTitles.contains(CATALOG_SHEET)) requests.add(addSheetRequest(CATALOG_SHEET))
         if (!existingTitles.contains(HISTORY_SHEET)) requests.add(addSheetRequest(HISTORY_SHEET))
         if (!existingTitles.contains(TRASH_SHEET)) requests.add(addSheetRequest(TRASH_SHEET))
-        if (!existingTitles.contains(BILL_ITEMS_SHEET)) requests.add(addSheetRequest(BILL_ITEMS_SHEET))
 
         if (requests.isNotEmpty()) {
             sheets.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(requests)).execute()
@@ -37,18 +35,14 @@ object GoogleSheetsHelper {
 
     private fun writeHeaders(sheets: Sheets, spreadsheetId: String) {
         val customersHeader = listOf("ID", "Name", "Phone", "Address", "Balance", "IsBadDebt", "CreatedBy", "LastUpdated", "ServerID")
-        val transactionsHeader = listOf("ID", "CustomerServerID", "Amount", "Type", "Timestamp", "Note", "Image Preview", "View Link", "DriveFileID", "CreatedBy", "LastUpdated", "ServerID")
-        val catalogHeader = listOf("ID", "Name", "Price", "Shortcut", "Units", "CreatedBy", "LastUpdated", "ServerID")
+        val transactionsHeader = listOf("ID", "CustomerServerID", "Amount", "Type", "Timestamp", "Note", "Image Preview", "View Link", "DriveFileID", "ParentServerID", "CreatedBy", "LastUpdated", "ServerID")
         val historyHeader = listOf("ID", "Timestamp", "Action", "IsCloud", "ServerID")
         val trashHeader = listOf("Summary", "Type", "OriginalServerID", "DeletedAt", "DataBackup")
-        val billItemsHeader = listOf("ID", "TransactionServerID", "ProductName", "Price", "LastUpdated", "ServerID")
         
         updateRange(sheets, spreadsheetId, "$CUSTOMERS_SHEET!A1", listOf(customersHeader))
         updateRange(sheets, spreadsheetId, "$TRANSACTIONS_SHEET!A1", listOf(transactionsHeader))
-        updateRange(sheets, spreadsheetId, "$CATALOG_SHEET!A1", listOf(catalogHeader))
         updateRange(sheets, spreadsheetId, "$HISTORY_SHEET!A1", listOf(historyHeader))
         updateRange(sheets, spreadsheetId, "$TRASH_SHEET!A1", listOf(trashHeader))
-        updateRange(sheets, spreadsheetId, "$BILL_ITEMS_SHEET!A1", listOf(billItemsHeader))
     }
 
     fun updateRange(sheets: Sheets, spreadsheetId: String, range: String, values: List<List<Any>>) {
