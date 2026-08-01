@@ -125,10 +125,10 @@ class CloudSyncManager @Inject constructor(
                 pushTombstones(sheets, spreadsheetId)
 
                 // Pull phase
-                pullCustomers(sheets, spreadsheetId)
-                pullTransactions(sheets, spreadsheetId)
+                val pulledCustomers = pullCustomers(sheets, spreadsheetId)
+                val pulledTransactions = pullTransactions(sheets, spreadsheetId)
                 
-                Log.i("CloudSync", "Sync Completed Successfully for $email")
+                Log.i("CloudSync", "Sync Completed: $pulledCustomers customers, $pulledTransactions transactions pulled for $email")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
             } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException) {
@@ -298,12 +298,17 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String) {
-        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A2:Z").execute().getValues() ?: return
+    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String): Int {
+        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A:Z").execute().getValues() ?: return 0
+        if (rawValues.size <= 1) return 0
+        val rows = rawValues.drop(1)
+        var count = 0
         rows.forEach { row ->
             if (row.size < 2) return@forEach
-            val idStr = row.getOrNull(0)?.toString()?.trim() ?: return@forEach
-            val name = row.getOrNull(1)?.toString()?.trim() ?: return@forEach
+            val idStr = row.getOrNull(0)?.toString()?.trim() ?: ""
+            val name = row.getOrNull(1)?.toString()?.trim() ?: ""
+            if (name.isEmpty()) return@forEach
+
             val phone = row.getOrNull(2)?.toString()?.trim() ?: ""
             val address = row.getOrNull(3)?.toString()?.trim() ?: ""
             val totalBalance = row.getOrNull(4)?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
@@ -312,31 +317,37 @@ class CloudSyncManager @Inject constructor(
             val last = row.getOrNull(7)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
             val sid = row.getOrNull(8)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "cust_$idStr"
 
-            val local = customerDao.getCustomerByServerId(sid) ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
-            if (local == null || last >= local.lastUpdated) {
-                val customer = Customer(
-                    id = local?.id ?: 0,
-                    name = name,
-                    phone = phone,
-                    address = address,
-                    totalBalance = totalBalance,
-                    isBadDebt = isBadDebt,
-                    createdBy = createdBy,
-                    lastUpdated = last,
-                    syncStatus = 0,
-                    serverId = sid
-                )
-                customerDao.insertCustomer(customer)
-            }
+            val local = customerDao.getCustomerByServerId(sid) 
+                ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
+
+            val customer = Customer(
+                id = local?.id ?: 0,
+                name = name,
+                phone = phone,
+                address = address,
+                totalBalance = totalBalance,
+                isBadDebt = isBadDebt,
+                createdBy = createdBy,
+                lastUpdated = last,
+                syncStatus = 0,
+                serverId = sid
+            )
+            customerDao.insertCustomer(customer)
+            count++
         }
+        return count
     }
 
-    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String) {
-        val rows = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:Z").execute().getValues() ?: return
+    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String): Int {
+        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A:Z").execute().getValues() ?: return 0
+        if (rawValues.size <= 1) return 0
+        val rows = rawValues.drop(1)
+        var count = 0
         rows.forEach { row ->
-            if (row.size < 4) return@forEach
-            val txIdStr = row.getOrNull(0)?.toString()?.trim() ?: return@forEach
-            val cid = row.getOrNull(1)?.toString()?.trim() ?: return@forEach
+            if (row.size < 3) return@forEach
+            val txIdStr = row.getOrNull(0)?.toString()?.trim() ?: ""
+            val cid = row.getOrNull(1)?.toString()?.trim() ?: ""
+            if (cid.isEmpty()) return@forEach
             
             val cust = customerDao.getCustomerByServerId(cid)
                 ?: customerDao.getCustomersListSync().find { it.id.toString() == cid || it.serverId == cid }
@@ -354,25 +365,25 @@ class CloudSyncManager @Inject constructor(
             val sid = row.getOrNull(12)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "tx_$txIdStr"
 
             val local = transactionDao.getTransactionByServerId(sid)
-            if (local == null || last >= local.lastUpdated) {
-                val tx = Transaction(
-                    id = local?.id ?: 0,
-                    customerId = cust.id,
-                    amount = amount,
-                    type = type,
-                    timestamp = timestamp,
-                    note = note,
-                    attachmentPath = null,
-                    createdBy = createdBy,
-                    lastUpdated = last,
-                    syncStatus = 0,
-                    serverId = sid,
-                    driveFileId = driveFileId,
-                    parentServerId = parentServerId
-                )
-                transactionDao.insertTransaction(tx)
-            }
+            val tx = Transaction(
+                id = local?.id ?: 0,
+                customerId = cust.id,
+                amount = amount,
+                type = type,
+                timestamp = timestamp,
+                note = note,
+                attachmentPath = null,
+                createdBy = createdBy,
+                lastUpdated = last,
+                syncStatus = 0,
+                serverId = sid,
+                driveFileId = driveFileId,
+                parentServerId = parentServerId
+            )
+            transactionDao.insertTransaction(tx)
+            count++
         }
+        return count
     }
 
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
