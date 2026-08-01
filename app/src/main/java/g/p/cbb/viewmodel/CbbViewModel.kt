@@ -68,11 +68,19 @@ class CbbViewModel @Inject constructor(
                 if (intent != null) {
                     _syncEvents.emit(SyncEvent.RequestAuthorization(intent))
                 } else if (isManual) {
-                    val errorMsg = e.message ?: "Sync Failed"
-                    if (errorMsg.contains("name must not be empty", ignoreCase = true)) {
+                    val detailMsg = when {
+                        e is com.google.api.client.googleapis.json.GoogleJsonResponseException -> {
+                            "Google API Error (${e.statusCode}): ${e.details?.message ?: e.message}"
+                        }
+                        cause is com.google.api.client.googleapis.json.GoogleJsonResponseException -> {
+                            "Google API Error (${cause.statusCode}): ${cause.details?.message ?: cause.message}"
+                        }
+                        else -> e.message ?: cause?.message ?: e.javaClass.simpleName
+                    }
+                    if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
                         _syncEvents.emit(SyncEvent.PickAccount)
                     } else {
-                        _syncEvents.emit(SyncEvent.Error(errorMsg))
+                        _syncEvents.emit(SyncEvent.Error(detailMsg))
                     }
                 }
             }
