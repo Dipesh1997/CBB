@@ -9,7 +9,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +25,10 @@ fun AccountSelectionDialog(
     onAddAccountClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var customEmail by androidx.compose.runtime.remember { 
+        androidx.compose.runtime.mutableStateOf(currentEmail ?: "dipeshkataria3@gmail.com") 
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -43,14 +47,7 @@ fun AccountSelectionDialog(
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 
-                if (availableAccounts.isEmpty()) {
-                    Text(
-                        text = "No Google accounts detected on device.",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                } else {
+                if (availableAccounts.isNotEmpty()) {
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
                         items(availableAccounts) { email ->
                             val isSelected = email.equals(currentEmail, ignoreCase = true)
@@ -89,16 +86,36 @@ fun AccountSelectionDialog(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
+                Text(
+                    text = "Or enter Google Account email manually:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+
+                OutlinedTextField(
+                    value = customEmail,
+                    onValueChange = { customEmail = it },
+                    label = { Text("Google Account Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = onAddAccountClick,
+
+                Button(
+                    onClick = {
+                        if (customEmail.isNotBlank()) {
+                            onAccountSelected(customEmail.trim())
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Add Another Google Account")
+                    Text("Connect Account & Sync")
                 }
             }
         },

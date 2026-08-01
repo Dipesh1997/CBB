@@ -109,7 +109,13 @@ fun HomeScreen(
                         isSyncing = false,
                         isError = false,
                         lastSyncText = "Live Auto-Sync",
-                        onManualSync = { viewModel.syncNow() }
+                        onManualSync = {
+                            if (userEmail.isNullOrBlank()) {
+                                viewModel.openAccountPicker(context)
+                            } else {
+                                viewModel.syncNow()
+                            }
+                        }
                     )
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Default.History, contentDescription = "Activity Log")
