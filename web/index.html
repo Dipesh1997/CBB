@@ -111,8 +111,38 @@
         </div>
     </div>
 
+    <!-- Export Options Modal -->
+    <div id="export-modal-overlay" class="modal-overlay" onclick="hideExportModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header-container">
+                <h3>Statement Options</h3>
+                <span class="material-icons" style="cursor:pointer;" onclick="hideExportModal()">close</span>
+            </div>
+            <div class="export-options">
+                <button class="btn-outline" onclick="exportStatement('full')">
+                    <span class="material-icons">description</span>
+                    Full Details (All Notes)
+                </button>
+                <button class="btn-outline" onclick="exportStatement('medium')">
+                    <span class="material-icons">table_rows</span>
+                    Medium (Summary)
+                </button>
+                <div class="date-range-export">
+                    <p style="font-size: 14px; margin-bottom: 12px; font-weight: 500;">Custom Date Range:</p>
+                    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                        <input type="date" id="export-start-date">
+                        <input type="date" id="export-end-date">
+                    </div>
+                    <button class="btn-primary" style="width: 100%;" onclick="exportStatement('range')">
+                        Export for Selected Dates
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Fullscreen Viewer -->
-    <div id="fs-viewer" onclick="this.style.display='none'">
+    <div id="fs-viewer" class="fs-viewer-overlay" onclick="this.style.display='none'">
         <img id="fs-img" src="" alt="Fullscreen">
         <span class="material-icons close-fs">close</span>
     </div>

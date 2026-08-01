@@ -6,38 +6,19 @@ let gapiInited = false;
 let gisInited = false;
 let databaseId = null;
 let currentModalType = null;
-let currentEditId = null; // Can be ServerID of record or CustomerServerID if adding new bill for specific customer
+let currentEditId = null;
+let currentParentId = null;
+let activeCustomerId = null;
 
-let appData = {
-    customers: [],
-    transactions: []
-};
+let appData = { customers: [], transactions: [] };
 
-// UUID Helper
-function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
-
-// Initialize GAPI and GIS
+function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c == 'x' ? r : (r & 0x3 | 0x8)).toString(16); }); }
 function gapiLoaded() { gapi.load('client', initializeGapiClient); }
-async function initializeGapiClient() {
-    await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
-    gapiInited = true;
-    maybeEnableButtons();
-}
-function gisLoaded() {
-    tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '' });
-    gisInited = true;
-    maybeEnableButtons();
-}
+async function initializeGapiClient() { await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] }); gapiInited = true; maybeEnableButtons(); }
+function gisLoaded() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: '' }); gisInited = true; maybeEnableButtons(); }
 function maybeEnableButtons() { if (gapiInited && gisInited) console.log("System Ready"); }
-
 window.onload = () => { gapiLoaded(); gisLoaded(); };
 
-// Auth Handlers
 function handleCredentialResponse(response) {
     const payload = decodeJwt(response.credential);
     document.getElementById('welcome-screen').style.display = 'none';
@@ -45,391 +26,276 @@ function handleCredentialResponse(response) {
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('user-name').textContent = payload.name;
     document.getElementById('user-pic').src = payload.picture;
-
-    tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) throw (resp);
-        await loadDashboardData();
-    };
-
+    tokenClient.callback = async (resp) => { if (!resp.error) await loadDashboardData(); };
     if (gapi.client.getToken() === null) tokenClient.requestAccessToken({prompt: 'consent'});
     else tokenClient.requestAccessToken({prompt: ''});
 }
+function decodeJwt(t) { var b = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(b).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))); }
+function handleSignOut() { const t = gapi.client.getToken(); if (t) { google.accounts.oauth2.revoke(t.access_token); gapi.client.setToken(''); window.location.reload(); } }
+function getErrorMessage(e) { if (e?.result?.error?.message) return e.result.error.message; if (e?.message) return e.message; return "Unknown Error"; }
 
-function decodeJwt(token) {
-    var base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    var jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-}
-
-function handleSignOut() {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-        window.location.reload();
-    }
-}
-
-function getErrorMessage(err) {
-    if (err && err.result && err.result.error && err.result.error.message) return err.result.error.message;
-    if (err && err.message) return err.message;
-    return "Unknown Error";
-}
-
-// Data Fetching
 async function loadDashboardData() {
     showLoader(true);
     try {
-        const response = await gapi.client.drive.files.list({
-            q: "name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
-            fields: 'files(id, name)',
-        });
-        if (response.result.files.length === 0) {
-            alert("Spreadsheet 'Udaari_Database' not found. Please sync from Android app first.");
-            showLoader(false); return;
-        }
-        databaseId = response.result.files[0].id;
-        const ranges = ['Customers!A2:I', 'Transactions!A2:M'];
-        const dataResponse = await gapi.client.sheets.spreadsheets.values.batchGet({ spreadsheetId: databaseId, ranges: ranges });
-        const valueRanges = dataResponse.result.valueRanges;
-        appData.customers = valueRanges[0].values || [];
-        appData.transactions = valueRanges[1].values || [];
-
+        const resp = await gapi.client.drive.files.list({ q: "name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false", fields: 'files(id, name)' });
+        if (resp.result.files.length === 0) { alert("Database not found. Sync from app first."); showLoader(false); return; }
+        databaseId = resp.result.files[0].id;
+        const data = await gapi.client.sheets.spreadsheets.values.batchGet({ spreadsheetId: databaseId, ranges: ['Customers!A2:I', 'Transactions!A2:M'] });
+        appData.customers = data.result.valueRanges[0].values || [];
+        appData.transactions = data.result.valueRanges[1].values || [];
         renderAll();
-        if (!document.getElementById('customer-ledger').classList.contains('active')) showSection('home');
-    } catch (err) { alert("Error fetching data: " + getErrorMessage(err)); }
+        if (activeCustomerId) showCustomerLedger(activeCustomerId);
+        else showSection('home');
+    } catch (err) { alert("Error: " + getErrorMessage(err)); }
     showLoader(false);
 }
 
-// UI Rendering
-function showSection(sectionId, param = null) {
+function showSection(id, param = null) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    const target = document.getElementById(sectionId);
-    if (target) target.classList.add('active');
-    const navBtn = document.getElementById('nav-' + (sectionId === 'customer-ledger' ? 'home' : sectionId));
-    if (navBtn) navBtn.classList.add('active');
+    document.getElementById(id).classList.add('active');
+    const navId = (id === 'customer-ledger' ? 'nav-home' : 'nav-' + id);
+    if (document.getElementById(navId)) document.getElementById(navId).classList.add('active');
 
     const fab = document.getElementById('global-fab');
-    const fabIcon = document.getElementById('fab-icon');
-    if (sectionId === 'home') {
-        fab.style.display = 'flex'; fabIcon.textContent = 'person_add';
-        fab.onclick = () => showModal('customer');
-    } else if (sectionId === 'customer-ledger') {
-        fab.style.display = 'flex'; fabIcon.textContent = 'add';
-        fab.onclick = () => showModal('transaction', param);
-    } else if (sectionId === 'transactions') {
-        fab.style.display = 'flex'; fabIcon.textContent = 'add';
-        fab.onclick = () => showModal('transaction');
-    } else { fab.style.display = 'none'; }
+    if (id === 'home') { fab.style.display='flex'; document.getElementById('fab-icon').textContent='person_add'; fab.onclick=()=>showModal('customer'); }
+    else if (id === 'customer-ledger') { fab.style.display='flex'; document.getElementById('fab-icon').textContent='add'; fab.onclick=()=>showModal('transaction', param); }
+    else if (id === 'transactions') { fab.style.display='flex'; document.getElementById('fab-icon').textContent='add'; fab.onclick=()=>showModal('transaction'); }
+    else fab.style.display='none';
 }
 
 function renderAll() {
-    renderOverview();
-    renderCustomers();
-    renderTransactions();
-}
+    let tr = 0, ta = 0;
+    appData.customers.forEach(row => { const b = parseFloat(row[4] || 0); if (b > 0) tr += b; else ta += Math.abs(b); });
+    document.getElementById('total-receivable').textContent = `₹ ${tr.toLocaleString('en-IN')}`;
+    document.getElementById('total-advance').textContent = `₹ ${ta.toLocaleString('en-IN')}`;
 
-function renderOverview() {
-    let totalRec = 0, totalAdv = 0;
-    appData.customers.forEach(row => {
-        const bal = parseFloat(row[4] || 0);
-        if (bal > 0) totalRec += bal; else totalAdv += Math.abs(bal);
-    });
-    document.getElementById('total-receivable').textContent = `₹ ${totalRec.toLocaleString('en-IN')}`;
-    document.getElementById('total-advance').textContent = `₹ ${totalAdv.toLocaleString('en-IN')}`;
-}
-
-function renderCustomers(filter = '') {
-    const tbody = document.querySelector('#customers-table tbody');
-    tbody.innerHTML = '';
-    appData.customers.filter(row => row[1].toLowerCase().includes(filter.toLowerCase())).forEach(row => {
-        const bal = parseFloat(row[4] || 0);
-        const sid = row[8];
+    const cbody = document.querySelector('#customers-table tbody'); cbody.innerHTML = '';
+    appData.customers.forEach(r => {
+        const bal = parseFloat(r[4] || 0), sid = r[8];
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><span class="clickable-name" onclick="showCustomerLedger('${sid}')">${row[1]}</span></td>
-            <td>${row[2]}</td>
-            <td style="color: ${bal >= 0 ? '#B71C1C' : '#1B5E20'}; font-weight: 700">₹ ${bal}</td>
-            <td>${row[5] === 'TRUE' ? '<span style="color:red">Bad Debt</span>' : 'Active'}</td>
-            <td style="text-align: right;">
-                <span class="material-icons action-icon" onclick="showModal('customer', '${sid}')">edit</span>
-                <span class="material-icons action-icon delete" onclick="deleteItem('Customers', '${sid}')">delete</span>
-            </td>`;
+        tr.innerHTML = `<td><span class="clickable-name" onclick="showCustomerLedger('${sid}')">${r[1]}</span></td><td>${r[2]}</td><td style="color:${bal >= 0 ? '#B71C1C' : '#1B5E20'}; font-weight:700">₹ ${bal}</td><td>${r[5] === 'TRUE' ? '<span style="color:red">Bad Debt</span>' : 'Active'}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('customer', '${sid}')">edit</span><span class="material-icons action-icon delete" onclick="deleteItem('Customers', '${sid}')">delete</span></td>`;
+        cbody.appendChild(tr);
+    });
+
+    const tbody = document.querySelector('#transactions-table tbody'); tbody.innerHTML = '';
+    [...appData.transactions].sort((a, b) => parseInt(b[4]) - parseInt(a[4])).slice(0, 50).forEach(r => {
+        const cust = appData.customers.find(c => c[8] === r[1]);
+        const did = (r[8] || '').trim(), tid = r[12];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
 }
-
-function filterCustomers() { renderCustomers(document.getElementById('customer-search').value); }
 
 function showCustomerLedger(sid) {
-    const customer = appData.customers.find(c => c[8] && c[8].trim() === sid.trim());
-    if (!customer) return;
+    activeCustomerId = sid;
+    const cust = appData.customers.find(c => c[8]?.trim() === sid.trim());
+    if (!cust) return;
     showSection('customer-ledger', sid);
-    document.getElementById('ledger-title').textContent = `${customer[1]}'s Ledger`;
-    const info = document.getElementById('ledger-customer-info');
-    const bal = parseFloat(customer[4] || 0);
-    info.innerHTML = `
-        <div><span class="label">Phone</span><span class="value">${customer[2]}</span></div>
-        <div><span class="label">Address</span><span class="value">${customer[3] || 'N/A'}</span></div>
-        <div><span class="label">Balance</span><span class="value" style="color: ${bal >= 0 ? '#B71C1C' : '#1B5E20'}">₹ ${bal}</span></div>
-    `;
-    document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(sid);
-    renderCustomerLedger(sid);
-}
+    document.getElementById('ledger-title').textContent = `${cust[1]}'s Ledger`;
+    const bal = parseFloat(cust[4] || 0);
+    document.getElementById('ledger-customer-info').innerHTML = `<div><span class="label">Phone</span><span class="value">${cust[2]}</span></div><div><span class="label">Address</span><span class="value">${cust[3] || 'N/A'}</span></div><div><span class="label">Balance</span><span class="value" style="color:${bal >= 0 ? '#B71C1C' : '#1B5E20'}">₹ ${bal}</span></div>`;
+    document.getElementById('export-pdf-btn').onclick = () => showExportModal();
 
-function renderCustomerLedger(sid) {
-    const tbody = document.querySelector('#ledger-table tbody');
-    tbody.innerHTML = '';
-    const targetId = sid.trim();
-    const txs = appData.transactions.filter(tx => tx[1] && tx[1].trim() === targetId).sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
-    if (txs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--outline);">No transactions found.</td></tr>';
-        return;
-    }
-    txs.forEach(row => {
+    const tbody = document.querySelector('#ledger-table tbody'); tbody.innerHTML = '';
+    const txs = appData.transactions.filter(t => t[1]?.trim() === sid.trim()).sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
+    if (txs.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--outline);">No transactions found.</td></tr>'; return; }
+    txs.forEach(r => {
+        const did = (r[8] || '').trim(), tid = r[12];
         const tr = document.createElement('tr');
-        const driveId = (row[8] || '').trim();
-        const tid = row[12];
-        tr.innerHTML = `
-            <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
-            <td>${row[3]}</td>
-            <td style="color: ${row[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${row[2]}</td>
-            <td>${row[5] || ''}</td>
-            <td style="text-align: right;">
-                <span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span>
-                <span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>
-                ${driveId ? `<img src="https://drive.google.com/thumbnail?id=${driveId}" class="thumbnail" onclick="viewFullscreen('${driveId}')">` : ''}
-                <span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span>
-            </td>`;
+        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
 }
 
-function renderTransactions() {
-    const tbody = document.querySelector('#transactions-table tbody');
-    tbody.innerHTML = '';
-    const sorted = [...appData.transactions].sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
-    sorted.slice(0, 50).forEach(row => {
-        const cust = appData.customers.find(c => c[8] === row[1]);
-        const driveId = (row[8] || '').trim();
-        const tid = row[12];
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
-            <td>${cust ? cust[1] : 'Unknown'}</td>
-            <td style="color: ${row[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${row[2]}</td>
-            <td>${row[3]}</td>
-            <td>${row[5] || ''}</td>
-            <td style="text-align: right;">
-                <span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span>
-                <span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>
-                ${driveId ? `<img src="https://drive.google.com/thumbnail?id=${driveId}" class="thumbnail" onclick="viewFullscreen('${driveId}')">` : ''}
-                <span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span>
-            </td>`;
-        tbody.appendChild(tr);
-    });
-}
-
-// Modal Logic
 function showModal(type, id = null) {
     currentModalType = type; currentEditId = id;
     const modal = document.getElementById('modal-overlay');
-    const title = document.getElementById('modal-title');
-    const fields = document.getElementById('form-fields');
-    fields.innerHTML = '';
+    const fields = document.getElementById('form-fields'); fields.innerHTML = '';
     document.getElementById('image-preview-container').style.display = 'none';
     document.getElementById('confirm-replace-text').style.display = 'none';
 
     const data = id ? findRecord(type, id) : null;
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().slice(0, 5);
 
     if (type === 'customer') {
-        title.textContent = data ? 'Edit Customer' : 'Add Customer';
-        fields.innerHTML = `
-            <div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div>
-            <div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div>
-            <div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
+        document.getElementById('modal-title').textContent = data ? 'Edit Customer' : 'Add Customer';
+        fields.innerHTML = `<div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div><div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div><div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
-        title.textContent = data ? 'Edit Transaction' : 'Add Transaction';
-        let preselectedCust = data ? data[1] : (document.getElementById('customer-ledger').classList.contains('active') ? id : '');
-        const options = appData.customers.map(c => `<option value="${c[8]}" ${c[8] === preselectedCust ? 'selected' : ''}>${c[1]}</option>`).join('');
+        document.getElementById('modal-title').textContent = data ? (currentParentId ? 'Record Part Payment' : 'Edit Transaction') : 'Add Transaction';
+        let pc = data ? data[1] : (id && !findRecord('transaction', id) ? id : (data ? data[1] : ''));
+        const opts = appData.customers.map(c => `<option value="${c[8]}" ${c[8] === pc ? 'selected' : ''}>${c[1]}</option>`).join('');
+        const dVal = data ? new Date(parseInt(data[4])).toISOString().split('T')[0] : dateStr;
+        const tVal = data ? new Date(parseInt(data[4])).toTimeString().slice(0, 5) : timeStr;
+
         fields.innerHTML = `
-            <div class="form-group"><label>Customer</label><select id="tx-cust" required>${options}</select></div>
+            <div class="form-group"><label>Customer</label><select id="tx-cust" required ${currentParentId ? 'disabled' : ''}>${opts}</select></div>
+            <div style="display:flex; gap:12px">
+                <div class="form-group" style="flex:1"><label>Date</label><input type="date" id="tx-date" value="${dVal}" required></div>
+                <div class="form-group" style="flex:1"><label>Time</label><input type="time" id="tx-time" value="${tVal}" required></div>
+            </div>
             <div class="form-group"><label>Amount</label><input type="number" id="tx-amount" step="0.01" value="${data ? data[2] : ''}" required></div>
-            <div class="form-group"><label>Type</label><select id="tx-type">
+            <div class="form-group"><label>Type</label><select id="tx-type" ${currentParentId ? 'disabled' : ''}>
                 <option value="DEBIT" ${data && data[3] === 'DEBIT' ? 'selected' : ''}>YOU GAVE (Debit)</option>
-                <option value="CREDIT" ${data && data[3] === 'CREDIT' ? 'selected' : ''}>YOU GOT (Credit)</option>
+                <option value="CREDIT" ${(data && data[3] === 'CREDIT') || currentParentId ? 'selected' : ''}>YOU GOT (Credit)</option>
             </select></div>
-            <div class="form-group"><label>Note</label><input type="text" id="tx-note" value="${data ? data[5] : ''}"></div>
+            <div class="form-group"><label>Note</label><input type="text" id="tx-note" value="${data ? data[5] : (currentParentId ? 'Part Payment' : '')}"></div>
             <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*" onchange="previewImage(this)"></div>`;
-        if (data && data[8]) {
-            document.getElementById('img-preview').src = `https://drive.google.com/thumbnail?id=${data[8]}`;
-            document.getElementById('image-preview-container').style.display = 'block';
-        }
+        if (data && data[8]) { document.getElementById('img-preview').src = `https://drive.google.com/uc?id=${data[8]}`; document.getElementById('image-preview-container').style.display = 'block'; }
     }
     modal.style.display = 'flex';
 }
 
-function previewImage(input) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
+function recordPartPayment(billId) {
+    currentParentId = billId;
+    const bill = appData.transactions.find(t => t[12] === billId);
+    showModal('transaction', bill[1]);
+}
+
+function previewImage(i) {
+    const r = new FileReader(); r.onload = (e) => {
         document.getElementById('img-preview').src = e.target.result;
         document.getElementById('image-preview-container').style.display = 'block';
-        if (currentEditId && findRecord(currentModalType, currentEditId)[8]) {
-            document.getElementById('confirm-replace-text').style.display = 'block';
-        }
+        if (currentEditId && findRecord(currentModalType, currentEditId)?.[8]) document.getElementById('confirm-replace-text').style.display = 'block';
     };
-    if (input.files[0]) reader.readAsDataURL(input.files[0]);
+    if (i.files[0]) r.readAsDataURL(i.files[0]);
 }
 
-function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
-
-function findRecord(type, id) {
-    if (type === 'customer') return appData.customers.find(c => c[8] === id);
-    if (type === 'transaction') return appData.transactions.find(t => t[12] === id);
-    return null;
-}
-
-// Form Submission
 async function handleFormSubmit(e) {
-    e.preventDefault();
-    if (!databaseId) return;
-    const onLedger = document.getElementById('customer-ledger').classList.contains('active');
-    const ledgerCustId = document.getElementById('global-fab').onclick.toString().includes('transaction') ? currentEditId : null;
-
+    e.preventDefault(); if (!databaseId) return;
     showLoader(true);
     try {
-        let lastId = currentEditId;
         if (currentModalType === 'customer') await saveCustomer();
-        else if (currentModalType === 'transaction') lastId = await saveTransaction();
+        else if (currentModalType === 'transaction') await saveTransaction();
         await loadDashboardData();
-        if (onLedger) {
-            const tx = appData.transactions.find(t => t[12] === lastId);
-            showCustomerLedger(tx ? tx[1] : (ledgerCustId || ''));
-        }
         hideModal();
-    } catch (err) { alert("Error saving: " + getErrorMessage(err)); }
+        currentParentId = null;
+    } catch (err) { alert("Error: " + getErrorMessage(err)); }
     showLoader(false);
 }
 
 async function saveCustomer() {
-    const name = document.getElementById('cust-name').value;
-    const phone = document.getElementById('cust-phone').value;
-    const address = document.getElementById('cust-address').value;
-    const sid = currentEditId || generateUUID();
-    const existing = findRecord('customer', currentEditId);
-    const row = [ existing ? existing[0] : '0', name, phone, address, existing ? existing[4] : '0.0', existing ? existing[5] : 'FALSE', existing ? existing[6] : 'web-user', Date.now().toString(), sid ];
+    const name = document.getElementById('cust-name').value, phone = document.getElementById('cust-phone').value, addr = document.getElementById('cust-address').value;
+    const sid = currentEditId || generateUUID(), ext = findRecord('customer', currentEditId);
+    const row = [ ext ? ext[0] : '0', name, phone, addr, ext ? ext[4] : '0.0', ext ? ext[5] : 'FALSE', ext ? ext[6] : 'web-user', Date.now().toString(), sid ];
     await updateOrAppendRow('Customers', sid, row, 8);
-    await logHistory(`${existing ? 'Updated' : 'Added'} Customer: ${name}`);
+    await logHistory(`${ext ? 'Updated' : 'Added'} Customer: ${name}`);
 }
 
 async function saveTransaction() {
-    const cid = document.getElementById('tx-cust').value;
-    const amt = document.getElementById('tx-amount').value;
-    const type = document.getElementById('tx-type').value;
-    const note = document.getElementById('tx-note').value;
-    const file = document.getElementById('tx-photo').files[0];
-    const existing = findRecord('transaction', currentEditId);
-    const sid = existing ? currentEditId : generateUUID();
-
-    let did = existing ? existing[8] : '', prev = existing ? existing[6] : '', view = existing ? existing[7] : '';
-    if (file) {
-        did = await uploadToDrive(file);
-        prev = `=IMAGE("https://drive.google.com/thumbnail?id=${did}")`;
-        view = `=HYPERLINK("https://drive.google.com/file/d/${did}/view", "View")`;
-    }
-    const row = [ existing ? existing[0] : '0', cid, amt, type, existing ? existing[4] : Date.now().toString(), note, prev, view, did, existing ? existing[9] : '', existing ? existing[10] : 'web-user', Date.now().toString(), sid ];
+    const cid = document.getElementById('tx-cust').value, amt = document.getElementById('tx-amount').value, type = document.getElementById('tx-type').value, note = document.getElementById('tx-note').value, file = document.getElementById('tx-photo').files[0];
+    const ts = new Date(`${document.getElementById('tx-date').value}T${document.getElementById('tx-time').value}`).getTime();
+    const ext = findRecord('transaction', currentEditId), sid = ext ? currentEditId : generateUUID();
+    let did = ext ? ext[8] : '', prev = ext ? ext[6] : '', view = ext ? ext[7] : '';
+    if (file) { did = await uploadToDrive(file); prev = `=IMAGE("https://drive.google.com/thumbnail?id=${did}")`; view = `=HYPERLINK("https://drive.google.com/file/d/${did}/view", "View")`; }
+    const row = [ ext ? ext[0] : '0', cid, amt, type, ts.toString(), note, prev, view, did, currentParentId || (ext ? ext[9] : ''), ext ? ext[10] : 'web-user', Date.now().toString(), sid ];
     await updateOrAppendRow('Transactions', sid, row, 12);
     await updateCustomerBalance(cid);
-    const cust = appData.customers.find(c => c[8] === cid);
-    await logHistory(`${existing ? 'Updated' : 'Added'} ${type} of ₹${amt} for ${cust ? cust[1] : 'Unknown'}`);
+    const c = appData.customers.find(x => x[8] === cid);
+    await logHistory(`${ext ? 'Updated' : 'Added'} ${type} of ₹${amt} for ${c ? c[1] : 'Unknown'}`);
     return sid;
 }
 
-async function logHistory(action) {
-    const row = [ '0', Date.now().toString(), action, 'TRUE', generateUUID() ];
-    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
+async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
+
+async function updateOrAppendRow(s, sid, r, c) {
+    const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
+    let i = -1; if (v) { for (let x = 0; x < v.length; x++) { if (v[x].length > c && v[x][c] === sid) { i = x + 1; break; } } }
+    if (i !== -1) await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `${s}!A${i}`, valueInputOption: 'USER_ENTERED', resource: { values: [r] } });
+    else await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: `${s}!A1`, valueInputOption: 'USER_ENTERED', resource: { values: [r] } });
 }
 
-async function uploadToDrive(file) {
-    const meta = { name: `Udaari_${Date.now()}_${file.name}`, mimeType: file.type };
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
-    form.append('file', file);
-    const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: form });
-    const res = await resp.json();
-    if (!resp.ok) throw new Error(res.error ? res.error.message : 'Drive Upload Failed');
-    return res.id;
-}
-
-async function updateOrAppendRow(sheet, sid, row, col) {
-    const vals = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${sheet}!A:Z` })).result.values;
-    let idx = -1;
-    if (vals) { for (let i = 0; i < vals.length; i++) { if (vals[i].length > col && vals[i][col] === sid) { idx = i + 1; break; } } }
-    if (idx !== -1) await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `${sheet}!A${idx}`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
-    else await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: `${sheet}!A1`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
-}
-
-async function deleteItem(sheet, sid) {
+async function deleteItem(s, sid) {
     if (!confirm("Are you sure?")) return;
     showLoader(true);
     try {
-        const col = { 'Customers': 8, 'Transactions': 12 }[sheet];
-        const vals = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${sheet}!A:Z` })).result.values;
-        if (vals) {
-            for (let i = 0; i < vals.length; i++) {
-                if (vals[i][col] === sid) {
-                    const rowData = vals[i];
-                    await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'Trash!A1', valueInputOption: 'USER_ENTERED', resource: { values: [[`Deleted from Web: ${sheet}`, sheet.toLowerCase(), sid, Date.now().toString(), JSON.stringify(rowData)]] } });
-                    await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: databaseId, range: `${sheet}!A${i+1}:Z${i+1}` });
-                    if (sheet === 'Transactions') await updateCustomerBalance(rowData[1]);
-                    await logHistory(`Deleted ${sheet} record: ${sid}`);
-                    break;
-                }
-            }
-        }
+        const c = { 'Customers': 8, 'Transactions': 12 }[s];
+        const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
+        if (v) { for (let x = 0; x < v.length; x++) { if (v[x][c] === sid) {
+            const rd = v[x];
+            await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'Trash!A1', valueInputOption: 'USER_ENTERED', resource: { values: [[`Deleted from Web: ${s}`, s.toLowerCase(), sid, Date.now().toString(), JSON.stringify(rd)]] } });
+            await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: databaseId, range: `${s}!A${x+1}:Z${x+1}` });
+            if (s === 'Transactions') await updateCustomerBalance(rd[1]);
+            await logHistory(`Deleted ${s} record: ${sid}`);
+            break;
+        } } }
         await loadDashboardData();
-    } catch (err) { alert("Delete failed: " + getErrorMessage(err)); }
+    } catch (e) { alert("Delete failed: " + getErrorMessage(e)); }
     showLoader(false);
 }
 
 async function updateCustomerBalance(cid) {
     const txs = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Transactions!A2:M' })).result.values || [];
-    let bal = 0;
-    txs.forEach(tx => { if (tx[1] && tx[1].trim() === cid.trim()) { const a = parseFloat(tx[2] || 0); if (tx[3] === 'DEBIT') bal += a; else bal -= a; } });
+    let bal = 0; txs.forEach(t => { if (t[1]?.trim() === cid.trim()) { const a = parseFloat(t[2] || 0); if (t[3] === 'DEBIT') bal += a; else bal -= a; } });
     const custs = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: 'Customers!A:I' })).result.values;
-    for (let i = 0; i < custs.length; i++) { if (custs[i][8] && custs[i][8].trim() === cid.trim()) {
-        const row = [...custs[i]]; row[4] = bal.toString(); row[7] = Date.now().toString();
-        await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `Customers!A${i+1}`, valueInputOption: 'USER_ENTERED', resource: { values: [row] } });
+    for (let x = 0; x < custs.length; x++) { if (custs[x][8]?.trim() === cid.trim()) {
+        const r = [...custs[x]]; r[4] = bal.toString(); r[7] = Date.now().toString();
+        await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `Customers!A${x+1}`, valueInputOption: 'USER_ENTERED', resource: { values: [r] } });
         break;
     } }
 }
 
 function shareTransaction(sid) {
-    const tx = appData.transactions.find(t => t[12] === sid);
-    const cust = appData.customers.find(c => c[8] === tx[1]);
-    const text = `📜 Udaari Ledger Bill\nCustomer: ${cust[1]}\nAmount: ₹${tx[2]}\nType: ${tx[3]}\nDate: ${new Date(parseInt(tx[4])).toLocaleDateString()}\nNote: ${tx[5] || 'N/A'}`;
-    if (navigator.share) navigator.share({ title: 'Bill', text: text });
-    else { navigator.clipboard.writeText(text); alert("Copied to clipboard!"); }
+    const tx = appData.transactions.find(t => t[12] === sid), c = appData.customers.find(x => x[8] === tx[1]);
+    const txt = `📜 Udaari Ledger Bill\nCustomer: ${c[1]}\nAmount: ₹${tx[2]}\nType: ${tx[3]}\nDate: ${new Date(parseInt(tx[4])).toLocaleDateString()}\nNote: ${tx[5] || 'N/A'}`;
+    if (navigator.share) navigator.share({ title: 'Bill', text: txt }); else { navigator.clipboard.writeText(txt); alert("Copied!"); }
 }
 
 function viewFullscreen(did) {
-    document.getElementById('fs-img').src = `https://drive.google.com/file/d/${did}/view?usp=sharing`.replace('/view', '/uc');
+    document.getElementById('fs-img').src = `https://drive.google.com/uc?id=${did}`;
     document.getElementById('fs-viewer').style.display = 'flex';
 }
 
-function showLoader(show) { document.getElementById('loader').style.display = show ? 'flex' : 'none'; }
+function showLoader(s) { document.getElementById('loader').style.display = s ? 'flex' : 'none'; }
+function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+function findRecord(t, id) { if (t === 'customer') return appData.customers.find(c => c[8] === id); if (t === 'transaction') return appData.transactions.find(x => x[12] === id); return null; }
 
-function exportCustomerPdf(sid) {
-    const customer = appData.customers.find(c => c[8] === sid);
+function showExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; }
+function hideExportModal() { document.getElementById('export-modal-overlay').style.display = 'none'; }
+
+async function exportStatement(type) {
+    const sid = activeCustomerId;
+    const cust = appData.customers.find(c => c[8] === sid);
+    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
+
+    if (type === 'range') {
+        const start = new Date(document.getElementById('export-start-date').value).getTime();
+        const end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
+        if (!start || !end) { alert("Select date range"); return; }
+        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
+    }
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.text("Customer Statement", 14, 20);
-    doc.text(`Name: ${customer[1]}`, 14, 30);
-    doc.text(`Balance: Rs. ${customer[4]}`, 14, 40);
-    const data = appData.transactions.filter(tx => tx[1] === sid).map(tx => [new Date(parseInt(tx[4])).toLocaleDateString(), tx[3], `Rs. ${tx[2]}`, tx[5] || '']);
-    doc.autoTable({ startY: 50, head: [['Date', 'Type', 'Amount', 'Note']], body: data });
-    doc.save(`Statement_${customer[1]}.pdf`);
+    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
+    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
+    doc.line(14, 30, 196, 30);
+    doc.text(`Customer: ${cust[1]}`, 14, 40);
+    doc.text(`Phone: ${cust[2]}`, 14, 46);
+    doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
+
+    let head = [['Date', 'Type', 'Amount', 'Note']];
+    let body = txs.map(t => [new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']);
+
+    if (type === 'full') {
+        // Full includes details and extra styling if needed
+    }
+
+    doc.autoTable({ startY: 60, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
+    doc.save(`Statement_${cust[1]}.pdf`);
+    hideExportModal();
+}
+
+async function uploadToDrive(f) {
+    const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: f.type };
+    const fd = new FormData();
+    fd.append('metadata', new Blob([JSON.stringify(m)], { type: 'application/json' }));
+    fd.append('file', f);
+    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: fd });
+    const res = await r.json();
+    if (!res.ok) throw new Error(res.error?.message || 'Upload Failed');
+    return res.id;
 }
