@@ -112,6 +112,27 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
         }
     }
 
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(Manifest.permission.GET_ACCOUNTS)
+        }
+    }
+
+    if (syncErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { syncErrorMessage = null },
+            title = { Text("Cloud Sync Diagnostic") },
+            text = { Text(syncErrorMessage ?: "") },
+            confirmButton = {
+                TextButton(onClick = { syncErrorMessage = null }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     LaunchedEffect(viewModel.syncEvents) {
         viewModel.syncEvents.collect { event ->
             when (event) {
@@ -130,10 +151,10 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
                             permissionLauncher.launch(Manifest.permission.GET_ACCOUNTS)
                         } else {
-                            android.widget.Toast.makeText(context, "Google account not found on device.", android.widget.Toast.LENGTH_LONG).show()
+                            syncErrorMessage = "Google account not found on device. Please sign in to Google in your device settings."
                         }
                     } else {
-                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                        syncErrorMessage = message
                     }
                 }
                 is CbbViewModel.SyncEvent.Success -> {

@@ -80,10 +80,7 @@ class CloudSyncManager @Inject constructor(
         return try {
             val am = android.accounts.AccountManager.get(context)
             val accounts = am.getAccountsByType("com.google")
-            val exactMatch = accounts.find { it.name.equals(email, ignoreCase = true) }
-            if (exactMatch != null) return exactMatch
-            if (accounts.size == 1) return accounts[0]
-            null
+            accounts.find { it.name.equals(email, ignoreCase = true) } ?: accounts.firstOrNull()
         } catch (e: Exception) {
             Log.e("CloudSync", "Error searching system accounts: ${e.message}")
             null
@@ -94,18 +91,21 @@ class CloudSyncManager @Inject constructor(
         withContext(Dispatchers.IO) {
             Log.i("CloudSync", "--- MASTER v21 REPLICA SYNC START ---")
             
+            val am = android.accounts.AccountManager.get(context)
+            val accounts = try { am.getAccountsByType("com.google") } catch (e: Exception) { emptyArray() }
+            
             var email = authManager.userEmail.value
-            if (email == null) {
-                val am = android.accounts.AccountManager.get(context)
-                val accounts = am.getAccountsByType("com.google")
-                if (accounts.isNotEmpty()) {
+            if (accounts.isNotEmpty()) {
+                val match = accounts.find { it.name.equals(email, ignoreCase = true) }
+                if (match != null) {
+                    email = match.name
+                } else {
                     email = accounts[0].name
                     authManager.forceAccountLink(email)
-                    Log.i("CloudSync", "Auto-linked account: $email")
-                } else {
-                    Log.e("CloudSync", "Sync Failed: No Google account found on device")
-                    return@withContext
+                    Log.i("CloudSync", "Auto-linked device Google account: $email")
                 }
+            } else if (email.isNullOrEmpty()) {
+                throw Exception("No Google account found on device. Please add a Google account in phone settings.")
             }
             
             val sheets = getSheetsService(email)
