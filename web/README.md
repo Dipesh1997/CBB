@@ -9,6 +9,11 @@ A standalone web dashboard for the Udaari Ledger project, built with HTML, CSS, 
 - **Individual Ledger View**: Click a customer name to see their full transaction history.
 - **PDF Export**: Generate professional statements for any customer.
 - **Photo Attachments**: Upload receipt photos directly to Google Drive.
+- **Smart Risk Warnings & Banners**: Automatic risk alerts for Bad Debt customer accounts and high overdue receivables (> ₹10,000).
+- **Interactive Business Tips**: Rotating ledger management tips and best practices for business operations.
+- **Inline Form Tips & Real-time Validation**: Warnings for high transaction amounts (≥ ₹50,000) and payments exceeding balance.
+- **Real-Time Multi-Device Auto-Sync**: Background polling every 5s detects remote changes made on other devices (Android app / other browsers) and auto-updates dashboard views without page refresh.
+- **Header Sync Badge & Tab Power Saver**: Live status indicator badge with pulse animation that automatically pauses polling when browser tab is hidden to save API quota.
 
 ## Setup Instructions
 

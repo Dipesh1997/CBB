@@ -13,11 +13,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
+    <div id="toast-container" class="toast-container"></div>
     <header>
         <div class="logo">Udaari Ledger</div>
         <div id="auth-container">
             <div id="g_id_onload" data-client_id="812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com" data-callback="handleCredentialResponse" data-auto_prompt="false"></div>
             <div class="g_id_signin" data-type="standard"></div>
+            <div id="sync-status-badge" class="sync-status-badge">
+                <span id="sync-dot" class="sync-dot active"></span>
+                <span id="sync-text">Live Auto-Sync</span>
+                <button class="sync-refresh-btn" onclick="triggerManualSync()" title="Sync Now">
+                    <span class="material-icons" style="font-size: 16px;">refresh</span>
+                </button>
+            </div>
             <div id="user-profile" style="display: none;">
                 <div class="user-info">
                     <span id="user-name"></span>
@@ -41,6 +49,26 @@
             </div>
 
             <section id="home" class="section">
+                <!-- Critical Warning Banner -->
+                <div id="home-warning-banner"></div>
+
+                <!-- Quick Business Tips Card -->
+                <div id="home-tips-card" class="tips-card">
+                    <div class="tips-card-header">
+                        <div class="tips-card-title">
+                            <span class="material-icons">lightbulb</span>
+                            <span>Ledger Tip of the Day</span>
+                        </div>
+                        <div class="tips-nav">
+                            <button onclick="prevTip()" title="Previous tip"><span class="material-icons" style="font-size: 16px;">chevron_left</span></button>
+                            <button onclick="nextTip()" title="Next tip"><span class="material-icons" style="font-size: 16px;">chevron_right</span></button>
+                        </div>
+                    </div>
+                    <div id="tip-content-text" class="tips-body">
+                        Attach photo receipts for all transactions over ₹1,000 to keep digital proof and avoid balance disputes.
+                    </div>
+                </div>
+
                 <div class="stats-grid">
                     <div class="stat-card receivable"><div>Total Receivables</div><div id="total-receivable" class="stat-value">₹ 0</div></div>
                     <div class="stat-card advance"><div>Total Advances</div><div id="total-advance" class="stat-value">₹ 0</div></div>
@@ -77,6 +105,10 @@
                     </div>
                     <button class="btn-primary" id="export-pdf-btn"><span class="material-icons" style="font-size: 18px; vertical-align: middle; margin-right: 4px;">picture_as_pdf</span> Export PDF</button>
                 </div>
+
+                <!-- Customer Ledger Specific Warning Alert -->
+                <div id="ledger-warning-box"></div>
+
                 <div id="ledger-customer-info" class="card ledger-info-grid"></div>
                 <div class="card">
                     <table id="ledger-table">
@@ -88,7 +120,7 @@
         </main>
     </div>
 
-    <!-- Modals -->
+    <!-- Add/Edit Modals -->
     <div id="modal-overlay" class="modal-overlay" onclick="hideModal()">
         <div class="modal" onclick="event.stopPropagation()">
             <div id="modal-header" class="modal-header-container">
@@ -97,12 +129,13 @@
             </div>
             <form id="modal-form" onsubmit="handleFormSubmit(event)">
                 <div id="form-scroll-area">
+                    <div id="modal-warning-box"></div>
                     <div id="form-fields"></div>
                     <!-- Image Preview Area -->
                     <div id="image-preview-container" style="display: none; margin-top: 16px; text-align: center;">
                         <p style="font-size: 11px; color: var(--outline); margin-bottom: 4px;">Receipt Photo:</p>
                         <img id="img-preview" src="" style="max-height: 100px; border-radius: 8px; cursor: pointer; border: 1px solid var(--surface-variant);" onclick="viewFullscreenFromPreview()" title="Click to view full screen">
-                        <p id="confirm-replace-text" style="color: var(--error); font-size: 11px; margin-top: 4px; display: none;">* This will replace the existing photo.</p>
+                        <p id="confirm-replace-text" class="field-warning" style="display: none;"><span class="material-icons">warning</span> Replacing existing photo attachment.</p>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -110,6 +143,26 @@
                     <button type="submit" class="btn-primary" id="save-btn">Save</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Warning Confirmation Modal -->
+    <div id="confirm-modal-overlay" class="modal-overlay" onclick="hideConfirmModal()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 420px;">
+            <div class="modal-header-container" style="margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--error);">
+                    <span class="material-icons" style="font-size: 28px;">warning</span>
+                    <h3 id="confirm-modal-title">Confirm Action</h3>
+                </div>
+                <span class="material-icons" style="cursor:pointer;" onclick="hideConfirmModal()">close</span>
+            </div>
+            <p id="confirm-modal-message" style="font-size: 14px; color: var(--on-surface-variant); line-height: 1.5; margin-bottom: 24px;">
+                Are you sure you want to perform this action?
+            </p>
+            <div class="form-actions">
+                <button type="button" class="btn-text" onclick="hideConfirmModal()">Cancel</button>
+                <button type="button" class="btn-danger" id="confirm-action-btn">Delete</button>
+            </div>
         </div>
     </div>
 
