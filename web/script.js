@@ -89,7 +89,9 @@ function renderAll() {
         const tr = document.createElement('tr');
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
+
         const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
+
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
@@ -113,7 +115,9 @@ function showCustomerLedger(sid) {
         const tr = document.createElement('tr');
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
+
         const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
+
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="event.stopPropagation(); recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="event.stopPropagation(); showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="event.stopPropagation(); shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="event.stopPropagation(); deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
@@ -138,6 +142,7 @@ function showModal(type, id = null) {
     } else if (type === 'transaction') {
         document.getElementById('modal-title').textContent = data ? 'Edit Transaction' : (currentParentId ? 'Record Part Payment' : 'Add Transaction');
         document.getElementById('save-btn').textContent = data ? 'Update Bill' : 'Save';
+
         let pc = '';
         if (data) pc = data[1];
         else if (currentParentId) { const p = appData.transactions.find(t => t[12] === currentParentId); pc = p ? p[1] : ''; }
@@ -275,56 +280,7 @@ async function imageToBase64(did) {
     }
 }
 
-async function exportStatement(type) {
-    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
-    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
-    if (type === 'range') {
-        const start = new Date(document.getElementById('export-start-date').value).getTime(), end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
-        if (!start || !end) { alert("Select range"); return; }
-        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
-    }
-    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
-    const showProgress = filteredWithImages.length > 10;
-    if (showProgress) {
-        document.getElementById('pdf-progress-container').style.display = 'block';
-        document.getElementById('loader-text').textContent = "Generating Statement...";
-        showLoader(true);
-    }
-    const { jsPDF } = window.jspdf; const doc = new jsPDF();
-    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
-    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
-    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
-    let y = 60;
-    for (let i = 0; i < txs.length; i++) {
-        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
-        const head = [['Date', 'Type', 'Amount', 'Note']];
-        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
-        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
-        y = doc.lastAutoTable.finalY + 5;
-        if (linked.length > 0) {
-            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
-            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
-            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
-            y = doc.lastAutoTable.finalY + 10;
-        }
-        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
-            if (showProgress) {
-                const idx = filteredWithImages.indexOf(t);
-                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
-                document.getElementById('pdf-progress-bar').style.width = prog + '%';
-                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
-            }
-            try {
-                const base64 = await imageToBase64(t[8]);
-                if (y > 230) { doc.addPage(); y = 20; }
-                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
-            } catch (e) { console.error("Img fail", e); }
-        }
-        if (y > 270) { doc.addPage(); y = 20; }
-    }
-    doc.save(`Statement_${cust[1]}.pdf`);
-    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
-}
+async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
 
 async function uploadToDrive(f) {
     const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: 'image/jpeg' };
@@ -336,8 +292,6 @@ async function uploadToDrive(f) {
     if (!r.ok) throw new Error(res.error?.message || 'Upload Failed');
     return res.id;
 }
-
-async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
 
 async function updateOrAppendRow(s, sid, r, c) {
     const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
@@ -404,3 +358,54 @@ function hideModal() { document.getElementById('modal-overlay').style.display = 
 function findRecord(t, id) { if (t === 'customer') return appData.customers.find(c => c[8] === id); if (t === 'transaction') return appData.transactions.find(x => x[12] === id); return null; }
 function showExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; }
 function hideExportModal() { document.getElementById('export-modal-overlay').style.display = 'none'; }
+
+async function exportStatement(type) {
+    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
+    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
+    if (type === 'range') {
+        const start = new Date(document.getElementById('export-start-date').value).getTime(), end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
+        if (!start || !end) { alert("Select range"); return; }
+        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
+    }
+    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
+    const showProgress = filteredWithImages.length > 10;
+    if (showProgress) {
+        document.getElementById('pdf-progress-container').style.display = 'block';
+        document.getElementById('loader-text').textContent = "Generating Statement...";
+        showLoader(true);
+    }
+    const { jsPDF } = window.jspdf; const doc = new jsPDF();
+    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
+    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
+    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
+    let y = 60;
+    for (let i = 0; i < txs.length; i++) {
+        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
+        const head = [['Date', 'Type', 'Amount', 'Note']];
+        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
+        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
+        y = doc.lastAutoTable.finalY + 5;
+        if (linked.length > 0) {
+            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
+            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
+            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
+            y = doc.lastAutoTable.finalY + 10;
+        }
+        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
+            if (showProgress) {
+                const idx = filteredWithImages.indexOf(t);
+                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
+                document.getElementById('pdf-progress-bar').style.width = prog + '%';
+                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
+            }
+            try {
+                const base64 = await imageToBase64(t[8]);
+                if (y > 230) { doc.addPage(); y = 20; }
+                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+            } catch (e) { console.error("Img fail", e); }
+        }
+        if (y > 270) { doc.addPage(); y = 20; }
+    }
+    doc.save(`Statement_${cust[1]}.pdf`);
+    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
+}
