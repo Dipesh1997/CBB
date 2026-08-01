@@ -13,24 +13,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.work.*
-import g.p.cbb.utils.SyncWorker
-import java.util.concurrent.TimeUnit
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
+import androidx.work.*
 import dagger.hilt.android.AndroidEntryPoint
 import g.p.cbb.ui.screens.*
+import g.p.cbb.ui.theme.CBBTheme
+import g.p.cbb.utils.SyncWorker
 import g.p.cbb.viewmodel.CbbViewModel
+import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -39,7 +40,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            CBBTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     CbbApp()
                 }
@@ -48,11 +49,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-sealed class Screen(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
-    object History : Screen("history", "History", Icons.Default.History)
-    object Backup : Screen("backup", "Backup", Icons.Default.Settings)
-    object Collab : Screen("collab", "Team", Icons.Default.Person)
+    object Transactions : Screen("transactions", "Transactions", Icons.Default.Receipt)
+    object History : Screen("history", "Audit Log", Icons.Default.History)
 }
 
 @Composable
@@ -63,6 +63,7 @@ fun CbbApp() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val unreadCount by viewModel.unreadHistoryCount.collectAsState(initial = 0)
+    val selectedCustomer by viewModel.selectedCustomer.collectAsState()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -105,11 +106,10 @@ fun CbbApp() {
                 is CbbViewModel.SyncEvent.Error -> {
                     val message = event.message
                     if (message.contains("name must not be empty", ignoreCase = true)) {
-                        // Request permission if it might be the cause
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
                             permissionLauncher.launch(Manifest.permission.GET_ACCOUNTS)
                         } else {
-                            android.widget.Toast.makeText(context, "Google account not found on device. Please sign in to settings.", android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, "Google account not found on device.", android.widget.Toast.LENGTH_LONG).show()
                         }
                     } else {
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
@@ -122,10 +122,10 @@ fun CbbApp() {
         }
     }
 
-    // Schedule Cloud Sync
+    // Schedule Cloud Sync Worker
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
+            val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -138,9 +138,8 @@ fun CbbApp() {
 
     val items = listOf(
         Screen.Home,
-        Screen.History,
-        Screen.Collab,
-        Screen.Backup
+        Screen.Transactions,
+        Screen.History
     )
 
     Scaffold(
@@ -151,7 +150,7 @@ fun CbbApp() {
                     val isSelected = if (screen == Screen.Home) isHomeSelected else currentDestination?.hierarchy?.any { it.route == screen.route } == true
 
                     NavigationBarItem(
-                        icon = { 
+                        icon = {
                             BadgedBox(
                                 badge = {
                                     if (screen == Screen.History && unreadCount > 0) {
@@ -183,12 +182,24 @@ fun CbbApp() {
         }
     ) { innerPadding ->
         NavHost(
-            navController = navController, 
+            navController = navController,
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
+                    viewModel = viewModel,
+                    onCustomerClick = { customer ->
+                        viewModel.selectCustomer(customer)
+                        navController.navigate("detail")
+                    },
+                    onNavigateToHistory = {
+                        navController.navigate(Screen.History.route)
+                    }
+                )
+            }
+            composable(Screen.Transactions.route) {
+                TransactionHistoryScreen(
                     viewModel = viewModel,
                     onCustomerClick = { customer ->
                         viewModel.selectCustomer(customer)
@@ -202,17 +213,14 @@ fun CbbApp() {
                     onBack = { navController.popBackStack() }
                 )
             }
-            composable(Screen.Collab.route) {
-                CollaborationScreen(viewModel = viewModel)
-            }
-            composable(Screen.Backup.route) {
-                BackupScreen(viewModel = viewModel)
-            }
             composable("detail") {
-                CustomerDetailScreen(
-                    viewModel = viewModel,
-                    onBack = { navController.popBackStack() }
-                )
+                selectedCustomer?.let { cust ->
+                    CustomerDetailScreen(
+                        viewModel = viewModel,
+                        customer = cust,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
             }
         }
     }
