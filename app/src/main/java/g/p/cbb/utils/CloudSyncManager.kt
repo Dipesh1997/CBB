@@ -23,6 +23,9 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Master Global Identity for your Spreadsheet
+const val MASTER_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
+
 @Singleton
 class CloudSyncManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -32,10 +35,6 @@ class CloudSyncManager @Inject constructor(
     private val tombstoneDao: TombstoneDao,
     private val activityLogDao: ActivityLogDao
 ) {
-    companion object {
-        private const val FIXED_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
-    }
-
     private val transport = NetHttpTransport()
     private val jsonFactory = GsonFactory.getDefaultInstance()
     private val syncLock = Mutex()
@@ -84,7 +83,8 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun fullSync() = syncLock.withLock {
         withContext(Dispatchers.IO) {
-            Log.i("CloudSync", "--- MASTER VERSION SYNC START ---")
+            Log.i("CloudSync", "--- MASTER v19 SYNC START ---")
+            
             var email = authManager.userEmail.value
             if (email == null) {
                 val am = android.accounts.AccountManager.get(context)
@@ -103,9 +103,10 @@ class CloudSyncManager @Inject constructor(
             val drive = getDriveService(email)
 
             try {
-                val spreadsheetId = FIXED_SPREADSHEET_ID
-                require(spreadsheetId.isNotBlank()) { "Spreadsheet ID is missing from build!" }
-                Log.d("CloudSync", "Using Spreadsheet ID: $spreadsheetId")
+                val spreadsheetId = MASTER_SPREADSHEET_ID
+                require(spreadsheetId.isNotBlank()) { "FATAL: Spreadsheet ID is blank!" }
+                
+                Log.d("CloudSync", "Executing sync for ID: $spreadsheetId")
                 
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
@@ -117,7 +118,7 @@ class CloudSyncManager @Inject constructor(
                 pullCustomers(sheets, spreadsheetId)
                 pullTransactions(sheets, spreadsheetId)
                 
-                Log.i("CloudSync", "Sync Completed Successfully")
+                Log.i("CloudSync", "Sync Completed for $email")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
             } catch (e: Exception) {
@@ -295,8 +296,7 @@ class CloudSyncManager @Inject constructor(
     }
 
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
-        val spreadsheetId = FIXED_SPREADSHEET_ID
         val drive = getDriveService(authManager.userEmail.value ?: return@withContext)
-        GoogleDriveHelper.shareWithUser(drive, spreadsheetId, email)
+        GoogleDriveHelper.shareWithUser(drive, MASTER_SPREADSHEET_ID, email)
     }
 }
