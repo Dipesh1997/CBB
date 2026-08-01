@@ -32,9 +32,12 @@ object GoogleSheetsHelper {
             
             // Always verify and write headers to ensure 13-column schema (fixes 400 Bad Request)
             writeHeaders(sheets, spreadsheetId)
+        } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("GoogleSheets", "Critical Header Setup Failure: ${e.message}")
-            throw Exception("Failed to connect to Spreadsheet: ${e.message}. Ensure ID is valid.")
+            val msg = e.message ?: e.javaClass.simpleName
+            android.util.Log.e("GoogleSheets", "Critical Header Setup Failure: $msg", e)
+            throw Exception("Failed to connect to Spreadsheet: $msg. Ensure ID is valid.")
         }
     }
 
