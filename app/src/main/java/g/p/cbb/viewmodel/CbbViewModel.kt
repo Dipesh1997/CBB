@@ -26,7 +26,6 @@ class CbbViewModel @Inject constructor(
         data class Error(val message: String) : SyncEvent()
         object Success : SyncEvent()
         object PickAccount : SyncEvent()
-        object LaunchWebOAuth : SyncEvent()
     }
 
     private val _syncEvents = MutableSharedFlow<SyncEvent>()
@@ -44,9 +43,9 @@ class CbbViewModel @Inject constructor(
 
     fun signIn(context: android.content.Context) {
         viewModelScope.launch {
-            if (authManager.accessToken.value.isNullOrEmpty()) {
-                _syncEvents.emit(SyncEvent.LaunchWebOAuth)
-            } else {
+            val success = authManager.signIn(context)
+            if (success) {
+                repository.markAllDataAsUnsynced()
                 performSync(isManual = true)
             }
         }
@@ -85,9 +84,7 @@ class CbbViewModel @Inject constructor(
                         }
                         else -> e.message ?: cause?.message ?: e.javaClass.simpleName
                     }
-                    if (detailMsg.contains("UnregisteredOnApiConsole", ignoreCase = true) || detailMsg.contains("401", ignoreCase = true) || detailMsg.contains("Invalid Credentials", ignoreCase = true)) {
-                        _syncEvents.emit(SyncEvent.LaunchWebOAuth)
-                    } else if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
+                    if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
                         _syncEvents.emit(SyncEvent.PickAccount)
                     } else {
                         _syncEvents.emit(SyncEvent.Error(detailMsg))

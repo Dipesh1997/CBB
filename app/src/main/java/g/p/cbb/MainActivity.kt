@@ -115,19 +115,6 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
     LaunchedEffect(viewModel.syncEvents) {
         viewModel.syncEvents.collect { event ->
             when (event) {
-                is CbbViewModel.SyncEvent.LaunchWebOAuth -> {
-                    val clientId = "812006416646-frvukuj4l9sqmishlsv2kp7clckd2vbd.apps.googleusercontent.com"
-                    val redirectUri = "g.p.cbb://oauth2redirect"
-                    val scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
-                    val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
-                            "client_id=$clientId&" +
-                            "redirect_uri=${android.net.Uri.encode(redirectUri)}&" +
-                            "response_type=token&" +
-                            "scope=${android.net.Uri.encode(scopes)}&" +
-                            "prompt=select_account"
-                    val browserIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(authUrl))
-                    context.startActivity(browserIntent)
-                }
                 is CbbViewModel.SyncEvent.PickAccount -> {
                     val intent = AccountManager.newChooseAccountIntent(
                         null, null, arrayOf("com.google"), null, null, null, null
