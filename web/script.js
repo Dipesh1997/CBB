@@ -1,10 +1,10 @@
 const CLIENT_ID = '812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
 
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
-let databaseId = null;
+let databaseId = '1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58'; // Hardcoded Spreadsheet ID
 let currentModalType = null;
 let currentEditId = null;
 let currentParentId = null;
@@ -27,10 +27,16 @@ function handleCredentialResponse(response) {
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('user-name').textContent = payload.name;
     document.getElementById('user-pic').src = payload.picture;
-    tokenClient.callback = async (resp) => { if (!resp.error) await loadDashboardData(); };
-    if (gapi.client.getToken() === null) tokenClient.requestAccessToken({prompt: 'consent'});
-    else tokenClient.requestAccessToken({prompt: ''});
+
+    tokenClient.callback = async (resp) => {
+        if (resp.error !== undefined) throw (resp);
+        await loadDashboardData();
+    };
+
+    // Auto-request access token without prompt if possible
+    tokenClient.requestAccessToken({prompt: ''});
 }
+
 function decodeJwt(t) { var b = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(atob(b).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))); }
 function handleSignOut() { const t = gapi.client.getToken(); if (t) { google.accounts.oauth2.revoke(t.access_token); gapi.client.setToken(''); window.location.reload(); } }
 function getErrorMessage(e) { if (e?.result?.error?.message) return e.result.error.message; if (e?.message) return e.message; return "Unknown Error"; }
@@ -38,16 +44,26 @@ function getErrorMessage(e) { if (e?.result?.error?.message) return e.result.err
 async function loadDashboardData() {
     showLoader(true);
     try {
-        const resp = await gapi.client.drive.files.list({ q: "name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false", fields: 'files(id, name)' });
-        if (resp.result.files.length === 0) { alert("Database not found. Sync from app first."); showLoader(false); return; }
-        databaseId = resp.result.files[0].id;
-        const data = await gapi.client.sheets.spreadsheets.values.batchGet({ spreadsheetId: databaseId, ranges: ['Customers!A2:I', 'Transactions!A2:M'] });
+        // Use hardcoded databaseId directly
+        const data = await gapi.client.sheets.spreadsheets.values.batchGet({
+            spreadsheetId: databaseId,
+            ranges: ['Customers!A2:I', 'Transactions!A2:M']
+        });
+
         appData.customers = data.result.valueRanges[0].values || [];
         appData.transactions = data.result.valueRanges[1].values || [];
+
         renderAll();
         if (activeCustomerId) showCustomerLedger(activeCustomerId);
         else showSection('home');
-    } catch (err) { alert("Error: " + getErrorMessage(err)); }
+    } catch (err) {
+        console.error(err);
+        if (err.status === 404) {
+            alert("Database not found! Ensure the spreadsheet ID is correct and you have access.");
+        } else {
+            alert("Error loading data: " + getErrorMessage(err));
+        }
+    }
     showLoader(false);
 }
 
@@ -140,8 +156,8 @@ function showModal(type, id = null) {
         document.getElementById('save-btn').textContent = data ? 'Update Customer' : 'Save';
         fields.innerHTML = `<div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div><div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div><div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
-        document.getElementById('modal-title').textContent = data ? 'Edit Transaction' : (currentParentId ? 'Record Part Payment' : 'Add Transaction');
-        document.getElementById('save-btn').textContent = data ? 'Update Bill' : 'Save';
+        document.getElementById('modal-title').textContent = data ? 'Edit Existing Bill' : (currentParentId ? 'Record Part Payment' : 'Add New Transaction');
+        document.getElementById('save-btn').textContent = data ? 'Update Bill' : 'Save Transaction';
 
         let pc = '';
         if (data) pc = data[1];
@@ -247,6 +263,8 @@ async function saveTransaction() {
     return sid;
 }
 
+async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
+
 async function compressImage(f, mw, q) {
     return new Promise((res) => {
         const r = new FileReader(); r.readAsDataURL(f);
@@ -280,7 +298,56 @@ async function imageToBase64(did) {
     }
 }
 
-async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
+async function exportStatement(type) {
+    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
+    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
+    if (type === 'range') {
+        const start = new Date(document.getElementById('export-start-date').value).getTime(), end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
+        if (!start || !end) { alert("Select range"); return; }
+        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
+    }
+    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
+    const showProgress = filteredWithImages.length > 10;
+    if (showProgress) {
+        document.getElementById('pdf-progress-container').style.display = 'block';
+        document.getElementById('loader-text').textContent = "Generating Statement...";
+        showLoader(true);
+    }
+    const { jsPDF } = window.jspdf; const doc = new jsPDF();
+    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
+    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
+    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
+    let y = 60;
+    for (let i = 0; i < txs.length; i++) {
+        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
+        const head = [['Date', 'Type', 'Amount', 'Note']];
+        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
+        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
+        y = doc.lastAutoTable.finalY + 5;
+        if (linked.length > 0) {
+            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
+            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
+            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
+            y = doc.lastAutoTable.finalY + 10;
+        }
+        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
+            if (showProgress) {
+                const idx = filteredWithImages.indexOf(t);
+                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
+                document.getElementById('pdf-progress-bar').style.width = prog + '%';
+                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
+            }
+            try {
+                const base64 = await imageToBase64(t[8]);
+                if (y > 230) { doc.addPage(); y = 20; }
+                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+            } catch (e) { console.error("Img fail", e); }
+        }
+        if (y > 270) { doc.addPage(); y = 20; }
+    }
+    doc.save(`Statement_${cust[1]}.pdf`);
+    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
+}
 
 async function uploadToDrive(f) {
     const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: 'image/jpeg' };
@@ -358,54 +425,3 @@ function hideModal() { document.getElementById('modal-overlay').style.display = 
 function findRecord(t, id) { if (t === 'customer') return appData.customers.find(c => c[8] === id); if (t === 'transaction') return appData.transactions.find(x => x[12] === id); return null; }
 function showExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; }
 function hideExportModal() { document.getElementById('export-modal-overlay').style.display = 'none'; }
-
-async function exportStatement(type) {
-    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
-    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
-    if (type === 'range') {
-        const start = new Date(document.getElementById('export-start-date').value).getTime(), end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
-        if (!start || !end) { alert("Select range"); return; }
-        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
-    }
-    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
-    const showProgress = filteredWithImages.length > 10;
-    if (showProgress) {
-        document.getElementById('pdf-progress-container').style.display = 'block';
-        document.getElementById('loader-text').textContent = "Generating Statement...";
-        showLoader(true);
-    }
-    const { jsPDF } = window.jspdf; const doc = new jsPDF();
-    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
-    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
-    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
-    let y = 60;
-    for (let i = 0; i < txs.length; i++) {
-        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
-        const head = [['Date', 'Type', 'Amount', 'Note']];
-        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
-        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
-        y = doc.lastAutoTable.finalY + 5;
-        if (linked.length > 0) {
-            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
-            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
-            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
-            y = doc.lastAutoTable.finalY + 10;
-        }
-        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
-            if (showProgress) {
-                const idx = filteredWithImages.indexOf(t);
-                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
-                document.getElementById('pdf-progress-bar').style.width = prog + '%';
-                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
-            }
-            try {
-                const base64 = await imageToBase64(t[8]);
-                if (y > 230) { doc.addPage(); y = 20; }
-                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
-            } catch (e) { console.error("Img fail", e); }
-        }
-        if (y > 270) { doc.addPage(); y = 20; }
-    }
-    doc.save(`Statement_${cust[1]}.pdf`);
-    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
-}
