@@ -29,7 +29,18 @@ class GoogleAuthManager @Inject constructor(
     private val _userName = MutableStateFlow<String?>(settings.getUserName())
     val userName = _userName.asStateFlow()
 
+    private val _accessToken = MutableStateFlow<String?>(settings.getAccessToken())
+    val accessToken = _accessToken.asStateFlow()
+
     fun isUserSignedIn(): Boolean = _userEmail.value != null
+
+    fun saveOAuthAccessToken(token: String, email: String? = null) {
+        _accessToken.value = token
+        settings.saveAccessToken(token)
+        if (!email.isNullOrEmpty()) {
+            forceAccountLink(email)
+        }
+    }
 
     fun forceAccountLink(email: String) {
         _userEmail.value = email

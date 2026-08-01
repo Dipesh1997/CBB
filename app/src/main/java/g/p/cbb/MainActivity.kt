@@ -91,9 +91,24 @@ fun CbbApp() {
         }
     }
 
+    val webOAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val token = result.data?.getStringExtra("ACCESS_TOKEN")
+            if (!token.isNullOrEmpty()) {
+                viewModel.saveOAuthToken(token)
+            }
+        }
+    }
+
     LaunchedEffect(viewModel.syncEvents) {
         viewModel.syncEvents.collect { event ->
             when (event) {
+                is CbbViewModel.SyncEvent.LaunchWebOAuth -> {
+                    val intent = android.content.Intent(context, g.p.cbb.ui.GoogleOAuthActivity::class.java)
+                    webOAuthLauncher.launch(intent)
+                }
                 is CbbViewModel.SyncEvent.PickAccount -> {
                     val intent = AccountManager.newChooseAccountIntent(
                         null, null, arrayOf("com.google"), null, null, null, null

@@ -35,6 +35,9 @@ class SettingsRepository @Inject constructor(
 
     fun getUserName(): String? = prefs.getString("user_name", null)
     fun saveUserName(name: String?) = prefs.edit().putString("user_name", name).apply()
+
+    fun getAccessToken(): String? = prefs.getString("access_token", null)
+    fun saveAccessToken(token: String?) = prefs.edit().putString("access_token", token).apply()
 }
 
 enum class SortOption {

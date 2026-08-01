@@ -41,29 +41,37 @@ class CloudSyncManager @Inject constructor(
     private val syncLock = Mutex()
 
     private fun getSheetsService(email: String): Sheets {
-        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY))
-        val targetEmail = email.trim()
-        val account = findSystemAccount(targetEmail)
-        if (account != null) {
-            credential.selectedAccount = account
+        val token = authManager.accessToken.value
+        val requestInitializer = if (!token.isNullOrEmpty()) {
+            com.google.api.client.http.HttpRequestInitializer { request ->
+                request.headers.authorization = "Bearer $token"
+            }
         } else {
-            credential.selectedAccountName = targetEmail
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+                val targetEmail = email.trim()
+                val account = findSystemAccount(targetEmail)
+                if (account != null) selectedAccount = account else selectedAccountName = targetEmail
+            }
         }
-        return Sheets.Builder(transport, jsonFactory, credential)
+        return Sheets.Builder(transport, jsonFactory, requestInitializer)
             .setApplicationName("Udaari Ledger")
             .build()
     }
 
     private fun getDriveService(email: String): Drive {
-        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY))
-        val targetEmail = email.trim()
-        val account = findSystemAccount(targetEmail)
-        if (account != null) {
-            credential.selectedAccount = account
+        val token = authManager.accessToken.value
+        val requestInitializer = if (!token.isNullOrEmpty()) {
+            com.google.api.client.http.HttpRequestInitializer { request ->
+                request.headers.authorization = "Bearer $token"
+            }
         } else {
-            credential.selectedAccountName = targetEmail
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+                val targetEmail = email.trim()
+                val account = findSystemAccount(targetEmail)
+                if (account != null) selectedAccount = account else selectedAccountName = targetEmail
+            }
         }
-        return Drive.Builder(transport, jsonFactory, credential)
+        return Drive.Builder(transport, jsonFactory, requestInitializer)
             .setApplicationName("Udaari Ledger")
             .build()
     }
