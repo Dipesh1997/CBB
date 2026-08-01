@@ -572,78 +572,225 @@ async function compressImage(f, mw, q) {
 }
 
 async function imageToBase64(did) {
+    if (!did || !did.trim()) return null;
+    const cleanDid = did.trim();
+
+    // Method 1: Google Drive API v3 binary media download with OAuth Bearer token
     try {
-        const response = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`, {
-            headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }
-        });
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (e) {
-        console.warn("Failed to fetch image via thumbnail, skipping in PDF:", did);
-        return null;
+        const token = gapi.client?.getToken()?.access_token;
+        if (token) {
+            const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${cleanDid}?alt=media`, {
+                headers: { Authorization: 'Bearer ' + token }
+            });
+            if (resp.ok) {
+                const blob = await resp.blob();
+                return await blobToBase64(blob);
+            }
+        }
+    } catch (err) {
+        console.warn("Drive API alt=media fetch failed:", cleanDid, err);
     }
+
+    // Method 2: Google Drive Thumbnail endpoint via Image Canvas
+    try {
+        const b64 = await loadImageAsBase64ViaCanvas(`https://drive.google.com/thumbnail?id=${cleanDid}&sz=w800`);
+        if (b64) return b64;
+    } catch (err) {
+        console.warn("Thumbnail canvas fetch failed:", cleanDid, err);
+    }
+
+    // Method 3: Direct UserContent URL via Image Canvas
+    try {
+        const b64 = await loadImageAsBase64ViaCanvas(`https://lh3.googleusercontent.com/d/${cleanDid}=w800`);
+        if (b64) return b64;
+    } catch (err) {
+        console.warn("Direct Google Content fetch failed:", cleanDid, err);
+    }
+
+    return null;
+}
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+function loadImageAsBase64ViaCanvas(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.src = url;
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width || 400;
+                canvas.height = img.naturalHeight || img.height || 400;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.85));
+            } catch (e) { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+    });
 }
 
 async function exportStatement(type) {
-    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
+    const sid = activeCustomerId;
+    const cust = appData.customers.find(c => c[8] === sid);
+    if (!cust) {
+        showToast("No active customer selected", "error");
+        return;
+    }
+
     let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
+
     if (type === 'range') {
         const startVal = document.getElementById('export-start-date').value;
         const endVal = document.getElementById('export-end-date').value;
-        if (!startVal || !endVal) { showToast("Please select a valid date range", "warning"); return; }
-        const start = new Date(startVal).getTime(), end = new Date(endVal).getTime() + 86400000;
-        if (start > end) { showToast("Start date cannot be after End date", "warning"); return; }
+        if (!startVal || !endVal) {
+            showToast("Please select a valid start and end date", "warning");
+            return;
+        }
+        const start = new Date(startVal).getTime();
+        const end = new Date(endVal).getTime() + 86400000;
+        if (start > end) {
+            showToast("Start date cannot be after End date", "warning");
+            return;
+        }
         txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
     }
-    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
-    const showProgress = filteredWithImages.length > 10;
-    if (showProgress) {
-        document.getElementById('pdf-progress-container').style.display = 'block';
-        document.getElementById('loader-text').textContent = "Generating Statement...";
-        showLoader(true);
+
+    if (txs.length === 0) {
+        showToast("No transactions found for statement export", "warning");
+        return;
     }
-    const { jsPDF } = window.jspdf; const doc = new jsPDF();
-    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
-    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
-    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
-    let y = 60;
-    for (let i = 0; i < txs.length; i++) {
-        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
-        const head = [['Date', 'Type', 'Amount', 'Note']];
-        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
-        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
-        y = doc.lastAutoTable.finalY + 5;
-        if (linked.length > 0) {
-            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
-            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
-            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
-            y = doc.lastAutoTable.finalY + 10;
-        }
-        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
-            if (showProgress) {
-                const idx = filteredWithImages.indexOf(t);
-                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
-                document.getElementById('pdf-progress-bar').style.width = prog + '%';
-                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
+
+    const includeImages = (type === 'full' || type === 'range');
+    const txsWithImages = txs.filter(t => (t[8] || '').trim() !== '');
+
+    showLoader(true);
+    document.getElementById('loader-text').textContent = (includeImages && txsWithImages.length > 0)
+        ? "Generating Statement with Receipt Photos..."
+        : "Generating Statement PDF...";
+
+    const progressContainer = document.getElementById('pdf-progress-container');
+    const progressBar = document.getElementById('pdf-progress-bar');
+    const progressText = document.getElementById('pdf-progress-text');
+
+    if (includeImages && txsWithImages.length > 0) {
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressText.textContent = `Processing receipt images (0/${txsWithImages.length})...`;
+    } else {
+        progressContainer.style.display = 'none';
+    }
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Header Title
+        doc.setFontSize(22);
+        doc.text("Customer Statement", 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
+        doc.line(14, 30, 196, 30);
+
+        // Customer Details
+        doc.setFontSize(11);
+        doc.text(`Customer: ${cust[1]}`, 14, 40);
+        doc.text(`Phone: ${cust[2]}`, 14, 46);
+        doc.text(`Balance: Rs. ${parseFloat(cust[4] || 0).toLocaleString('en-IN')}`, 14, 52);
+
+        let y = 60;
+        let processedImgCount = 0;
+
+        for (let i = 0; i < txs.length; i++) {
+            const t = txs[i];
+            const linked = appData.transactions.filter(x => x[9] === t[12]);
+            const head = [['Date', 'Type', 'Amount', 'Note']];
+            const body = [[
+                new Date(parseInt(t[4])).toLocaleDateString(),
+                t[3],
+                `Rs. ${parseFloat(t[2]).toLocaleString('en-IN')}`,
+                t[5] || ''
+            ]];
+
+            doc.autoTable({
+                startY: y,
+                head: head,
+                body: body,
+                theme: 'grid',
+                headStyles: { fillColor: [103, 80, 164] }
+            });
+            y = doc.lastAutoTable.finalY + 5;
+
+            if (linked.length > 0) {
+                doc.setFontSize(9);
+                doc.text("Part Payments Received:", 20, y);
+                y += 5;
+                const lRows = linked.map(l => [
+                    new Date(parseInt(l[4])).toLocaleDateString(),
+                    `Rs. ${parseFloat(l[2]).toLocaleString('en-IN')}`,
+                    l[5] || ''
+                ]);
+                doc.autoTable({
+                    startY: y,
+                    head: [['Date', 'Amount', 'Note']],
+                    body: lRows,
+                    theme: 'plain',
+                    margin: { left: 20 }
+                });
+                y = doc.lastAutoTable.finalY + 6;
             }
-            try {
-                const base64 = await imageToBase64(t[8]);
-                if (base64) {
-                    if (y > 230) { doc.addPage(); y = 20; }
-                    doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+
+            // Export receipt images for full or custom date range export
+            const driveFileId = (t[8] || '').trim();
+            if (includeImages && driveFileId) {
+                processedImgCount++;
+                const prog = Math.round((processedImgCount / txsWithImages.length) * 100);
+                progressBar.style.width = prog + '%';
+                progressText.textContent = `Processing receipt image (${processedImgCount}/${txsWithImages.length})...`;
+
+                try {
+                    const base64 = await imageToBase64(driveFileId);
+                    if (base64) {
+                        if (y > 210) {
+                            doc.addPage();
+                            y = 20;
+                        }
+                        const imgFormat = base64.includes('image/png') ? 'PNG' : 'JPEG';
+                        doc.setFontSize(9);
+                        doc.text("Attached Receipt Photo:", 14, y);
+                        y += 4;
+                        doc.addImage(base64, imgFormat, 14, y, 60, 60);
+                        y += 68;
+                    }
+                } catch (e) {
+                    console.error("Image processing error for transaction:", t[12], e);
                 }
-            } catch (e) { console.error("Img fail", e); }
+            }
+
+            if (y > 260) {
+                doc.addPage();
+                y = 20;
+            }
         }
-        if (y > 270) { doc.addPage(); y = 20; }
+
+        doc.save(`Statement_${cust[1].replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+        showToast(`PDF Statement for ${cust[1]} generated with receipt images!`, "success");
+    } catch (err) {
+        console.error("PDF generation failed:", err);
+        showToast("Failed to generate PDF statement: " + getErrorMessage(err), "error");
+    } finally {
+        hideExportModal();
+        showLoader(false);
+        progressContainer.style.display = 'none';
     }
-    doc.save(`Statement_${cust[1]}.pdf`);
-    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
-    showToast(`Statement PDF for ${cust[1]} generated!`, "success");
 }
 
 async function uploadToDrive(f) {
