@@ -84,7 +84,9 @@ class CbbViewModel @Inject constructor(
                         }
                         else -> e.message ?: cause?.message ?: e.javaClass.simpleName
                     }
-                    if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
+                    if (detailMsg.contains("UnregisteredOnApiConsole", ignoreCase = true)) {
+                        _syncEvents.emit(SyncEvent.Error("Google Console Registration Required:\nAdd Android Client ID for package g.p.cbb and SHA-1 ED:33:39:09:21:C0:08:08:DE:38:86:D6:41:25:90:A1:ED:CB:88:E8 in Google Cloud Console Credentials."))
+                    } else if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
                         _syncEvents.emit(SyncEvent.PickAccount)
                     } else {
                         _syncEvents.emit(SyncEvent.Error(detailMsg))
