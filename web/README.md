@@ -5,10 +5,10 @@ A standalone web dashboard for the Udaari Ledger project, built with HTML, CSS, 
 ## Features
 - Google Sign-In (Google Identity Services)
 - Google Sheets API Integration (Udaari_Database)
-- Overview of Receivables and Advances
-- Customer Ledger Management
-- Transaction History
-- Product Catalog
+- Full CRUD Support (Add/Edit/Delete Customers, Bills, and Catalog)
+- **Individual Ledger View**: Click a customer name to see their full transaction history.
+- **PDF Export**: Generate professional statements for any customer.
+- **Photo Attachments**: Upload receipt photos directly to Google Drive.
 
 ## Setup Instructions
 
@@ -19,7 +19,7 @@ A standalone web dashboard for the Udaari Ledger project, built with HTML, CSS, 
 4. Go to **APIs & Services > OAuth consent screen**:
    - Select "External" and click "Create".
    - Fill in the required app information.
-   - Add scopes: `https://www.googleapis.com/auth/spreadsheets.readonly` and `https://www.googleapis.com/auth/drive.metadata.readonly`.
+   - Add scopes: `https://www.googleapis.com/auth/spreadsheets` and `https://www.googleapis.com/auth/drive.file`.
 5. Go to **APIs & Services > Credentials**:
    - Click "Create Credentials" > "OAuth client ID".
    - Application type: "Web application".

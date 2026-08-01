@@ -1,5 +1,5 @@
 const CLIENT_ID = '812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.file';
 
 let tokenClient;
 let gapiInited = false;
@@ -191,7 +191,7 @@ function renderCustomers(filter = '') {
             const balance = parseFloat(row[4] || 0);
             const serverId = row[8];
             tr.innerHTML = `
-                <td>${row[1]}</td>
+                <td><span class="clickable-name" onclick="showCustomerLedger('${serverId}')">${row[1]}</span></td>
                 <td>${row[2]}</td>
                 <td style="color: ${balance >= 0 ? 'green' : 'red'}">₹ ${balance}</td>
                 <td>${row[5] === 'TRUE' ? '<span style="color:red">Bad Debt</span>' : 'Active'}</td>
@@ -202,6 +202,94 @@ function renderCustomers(filter = '') {
             `;
             tbody.appendChild(tr);
         });
+}
+
+function showCustomerLedger(serverId) {
+    const customer = appData.customers.find(c => c[8] === serverId);
+    if (!customer) return;
+
+    showSection('customer-ledger');
+    document.getElementById('ledger-title').textContent = `${customer[1]}'s Ledger`;
+
+    const info = document.getElementById('ledger-customer-info');
+    const balance = parseFloat(customer[4] || 0);
+    info.innerHTML = `
+        <div><span class="label">Phone</span><span class="value">${customer[2]}</span></div>
+        <div><span class="label">Address</span><span class="value">${customer[3] || 'N/A'}</span></div>
+        <div><span class="label">Current Balance</span><span class="value" style="color: ${balance >= 0 ? 'green' : 'red'}">₹ ${balance}</span></div>
+    `;
+
+    document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(serverId);
+    renderCustomerLedger(serverId);
+}
+
+function renderCustomerLedger(serverId) {
+    const tbody = document.querySelector('#ledger-table tbody');
+    tbody.innerHTML = '';
+
+    const transactions = appData.transactions
+        .filter(tx => tx[1] === serverId)
+        .sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
+
+    transactions.forEach(row => {
+        const tr = document.createElement('tr');
+        const hasPhoto = row[8] && row[8].trim() !== '';
+        tr.innerHTML = `
+            <td>${new Date(parseInt(row[4])).toLocaleDateString()}</td>
+            <td>${row[3]}</td>
+            <td style="color: ${row[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${row[2]}</td>
+            <td>${row[5] || ''}</td>
+            <td style="text-align: right;">
+                ${hasPhoto ? `<a href="https://drive.google.com/file/d/${row[8]}/view" target="_blank" class="material-icons action-icon">image</a>` : '-'}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function exportCustomerPdf(serverId) {
+    const customer = appData.customers.find(c => c[8] === serverId);
+    if (!customer) return;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // Header
+    doc.setFontSize(22);
+    doc.text("Customer Statement", 14, 20);
+    doc.setFontSize(12);
+    doc.text(`Udaari Ledger - Generated on ${new Date().toLocaleDateString()}`, 14, 28);
+
+    // Customer Info
+    doc.line(14, 32, 196, 32);
+    doc.setFont("helvetica", "bold");
+    doc.text("Customer Details:", 14, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Name: ${customer[1]}`, 14, 50);
+    doc.text(`Phone: ${customer[2]}`, 14, 58);
+    doc.text(`Current Balance: Rs. ${customer[4]}`, 14, 66);
+    doc.line(14, 72, 196, 72);
+
+    // Table
+    const transactions = appData.transactions
+        .filter(tx => tx[1] === serverId)
+        .sort((a, b) => parseInt(a[4]) - parseInt(b[4])) // Ascending for report
+        .map(tx => [
+            new Date(parseInt(tx[4])).toLocaleDateString(),
+            tx[3],
+            `Rs. ${tx[2]}`,
+            tx[5] || ''
+        ]);
+
+    doc.autoTable({
+        startY: 80,
+        head: [['Date', 'Type', 'Amount', 'Note']],
+        body: transactions,
+        theme: 'striped',
+        headStyles: { fillColor: [103, 80, 164] }
+    });
+
+    doc.save(`Statement_${customer[1]}_${Date.now()}.pdf`);
 }
 
 function filterCustomers() {
@@ -282,6 +370,7 @@ function showModal(type, serverId = null) {
             <div class="form-group"><label>Amount</label><input type="number" id="tx-amount" step="0.01" required></div>
             <div class="form-group"><label>Type</label><select id="tx-type"><option value="DEBIT">YOU GAVE (Debit)</option><option value="CREDIT">YOU GOT (Credit)</option></select></div>
             <div class="form-group"><label>Note</label><input type="text" id="tx-note"></div>
+            <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*"></div>
         `;
     } else if (type === 'catalog') {
         title.textContent = data ? 'Edit Catalog Item' : 'Add Product';
@@ -352,12 +441,23 @@ async function saveTransaction() {
     const amount = parseFloat(document.getElementById('tx-amount').value);
     const type = document.getElementById('tx-type').value;
     const note = document.getElementById('tx-note').value;
+    const photoFile = document.getElementById('tx-photo').files[0];
     const serverId = generateUUID();
+
+    let driveFileId = '';
+    let imagePreview = '';
+    let viewLink = '';
+
+    if (photoFile) {
+        driveFileId = await uploadToDrive(photoFile);
+        imagePreview = `=IMAGE("https://drive.google.com/thumbnail?id=${driveFileId}")`;
+        viewLink = `=HYPERLINK("https://drive.google.com/file/d/${driveFileId}/view", "View Attachment")`;
+    }
 
     const row = [
         '0', custServerId, amount.toString(), type,
         Date.now().toString(), note,
-        '', '', '', 'web-user',
+        imagePreview, viewLink, driveFileId, 'web-user',
         Date.now().toString(), serverId
     ];
 
@@ -371,6 +471,33 @@ async function saveTransaction() {
 
     // 2. Recalculate balance
     await updateCustomerBalance(custServerId);
+}
+
+async function uploadToDrive(file) {
+    const metadata = {
+        name: `Udaari_${Date.now()}_${file.name}`,
+        mimeType: file.type,
+    };
+
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', file);
+
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+            Authorization: 'Bearer ' + gapi.client.getToken().access_token,
+        },
+        body: form,
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ? result.error.message : 'Drive Upload Failed');
+
+    // Set permission to anyone with link (like Android app) or at least ensure it's viewable
+    // Note: To match Android app perfectly, we'd need to set permissions,
+    // but drive.file scope only allows the app to see files it created.
+    return result.id;
 }
 
 async function saveCatalogItem() {

@@ -318,3 +318,37 @@ tr:hover {
     color: var(--error);
     background-color: rgba(179, 38, 30, 0.08);
 }
+
+.clickable-name {
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.clickable-name:hover {
+    color: var(--on-primary-container);
+}
+
+#ledger-customer-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    padding: 16px 24px;
+}
+
+#ledger-customer-info div {
+    display: flex;
+    flex-direction: column;
+}
+
+#ledger-customer-info .label {
+    font-size: 12px;
+    color: var(--on-surface-variant);
+    margin-bottom: 4px;
+}
+
+#ledger-customer-info .value {
+    font-size: 16px;
+    font-weight: 500;
+}

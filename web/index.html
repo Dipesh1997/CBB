@@ -10,6 +10,9 @@
     <!-- Google GIS and GAPI -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
+    <!-- jsPDF and autoTable for Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
     <header>
@@ -131,6 +134,38 @@
                                 <th>Price</th>
                                 <th>Units</th>
                                 <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="customer-ledger" class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <span class="material-icons action-icon" onclick="showSection('customers')">arrow_back</span>
+                        <h2 id="ledger-title">Customer Ledger</h2>
+                    </div>
+                    <button class="btn-primary" id="export-pdf-btn">
+                        <span class="material-icons" style="font-size: 18px; vertical-align: middle; margin-right: 4px;">picture_as_pdf</span>
+                        Export PDF
+                    </button>
+                </div>
+
+                <div id="ledger-customer-info" class="card" style="margin-bottom: 24px;">
+                    <!-- Dynamically populated info -->
+                </div>
+
+                <div class="card">
+                    <table id="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Note</th>
+                                <th style="text-align: right;">Photo</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
