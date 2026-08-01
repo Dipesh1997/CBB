@@ -89,9 +89,9 @@
     </div>
 
     <!-- Modals -->
-    <div id="modal-overlay" onclick="hideModal()">
+    <div id="modal-overlay" class="modal-overlay" onclick="hideModal()">
         <div class="modal" onclick="event.stopPropagation()">
-            <div id="modal-header">
+            <div id="modal-header" class="modal-header-container">
                 <h3 id="modal-title">Add Item</h3>
                 <span class="material-icons" style="cursor:pointer;" onclick="hideModal()">close</span>
             </div>
@@ -99,15 +99,32 @@
                 <div id="form-fields"></div>
                 <!-- Image Preview Area -->
                 <div id="image-preview-container" style="display: none; margin-top: 16px; text-align: center;">
-                    <p style="font-size: 12px; color: var(--outline);">New Photo Preview:</p>
-                    <img id="img-preview" src="" style="max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 8px;">
-                    <p id="confirm-replace-text" style="color: var(--error); font-size: 12px; display: none;">* This will replace the existing photo.</p>
+                    <p style="font-size: 11px; color: var(--outline); margin-bottom: 4px;">Receipt Photo:</p>
+                    <img id="img-preview" src="" style="max-height: 100px; border-radius: 8px; cursor: pointer; border: 1px solid var(--surface-variant);" onclick="viewFullscreenFromPreview()" title="Click to view full screen">
+                    <p id="confirm-replace-text" style="color: var(--error); font-size: 11px; margin-top: 4px; display: none;">* This will replace the existing photo.</p>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-text" onclick="hideModal()">Cancel</button>
                     <button type="submit" class="btn-primary" id="save-btn">Save</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Transaction Details Modal -->
+    <div id="details-modal-overlay" class="modal-overlay" onclick="hideDetailsModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header-container">
+                <h3>Bill Details</h3>
+                <span class="material-icons" style="cursor:pointer;" onclick="hideDetailsModal()">close</span>
+            </div>
+            <div id="details-content">
+                <!-- Populated by JS -->
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-text" id="details-edit-btn">Edit</button>
+                <button type="button" class="btn-primary" id="details-share-btn">Share</button>
+            </div>
         </div>
     </div>
 

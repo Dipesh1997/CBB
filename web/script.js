@@ -66,7 +66,10 @@ function showSection(id, param = null) {
 
 function renderAll() {
     let tr = 0, ta = 0;
-    appData.customers.forEach(row => { const b = parseFloat(row[4] || 0); if (b > 0) tr += b; else ta += Math.abs(b); });
+    appData.customers.forEach(row => {
+        const b = parseFloat(row[4] || 0);
+        if (b > 0) tr += b; else ta += Math.abs(b);
+    });
     document.getElementById('total-receivable').textContent = `₹ ${tr.toLocaleString('en-IN')}`;
     document.getElementById('total-advance').textContent = `₹ ${ta.toLocaleString('en-IN')}`;
 
@@ -83,7 +86,9 @@ function renderAll() {
         const cust = appData.customers.find(c => c[8] === r[1]);
         const did = (r[8] || '').trim(), tid = r[12];
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
+        tr.className = 'clickable-row';
+        tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
+        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
 }
@@ -104,7 +109,9 @@ function showCustomerLedger(sid) {
     txs.forEach(r => {
         const did = (r[8] || '').trim(), tid = r[12];
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
+        tr.className = 'clickable-row';
+        tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
+        tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="event.stopPropagation(); recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="event.stopPropagation(); showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="event.stopPropagation(); shareTransaction('${tid}')">share</span>${did ? `<img src="https://drive.google.com/uc?id=${did}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="event.stopPropagation(); deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
 }
@@ -116,7 +123,7 @@ function showModal(type, id = null) {
     document.getElementById('image-preview-container').style.display = 'none';
     document.getElementById('confirm-replace-text').style.display = 'none';
 
-    const data = id ? findRecord(type, id) : null;
+    const data = id && findRecord(type, id) ? findRecord(type, id) : null;
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().slice(0, 5);
@@ -125,8 +132,17 @@ function showModal(type, id = null) {
         document.getElementById('modal-title').textContent = data ? 'Edit Customer' : 'Add Customer';
         fields.innerHTML = `<div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div><div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div><div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
-        document.getElementById('modal-title').textContent = data ? (currentParentId ? 'Record Part Payment' : 'Edit Transaction') : 'Add Transaction';
-        let pc = data ? data[1] : (id && !findRecord('transaction', id) ? id : (data ? data[1] : ''));
+        document.getElementById('modal-title').textContent = data ? 'Edit Transaction' : (currentParentId ? 'Record Part Payment' : 'Add Transaction');
+
+        let pc = '';
+        if (data) pc = data[1];
+        else if (currentParentId) {
+            const parent = appData.transactions.find(t => t[12] === currentParentId);
+            pc = parent ? parent[1] : '';
+        } else if (document.getElementById('customer-ledger').classList.contains('active')) {
+            pc = activeCustomerId;
+        }
+
         const opts = appData.customers.map(c => `<option value="${c[8]}" ${c[8] === pc ? 'selected' : ''}>${c[1]}</option>`).join('');
         const dVal = data ? new Date(parseInt(data[4])).toISOString().split('T')[0] : dateStr;
         const tVal = data ? new Date(parseInt(data[4])).toTimeString().slice(0, 5) : timeStr;
@@ -144,10 +160,49 @@ function showModal(type, id = null) {
             </select></div>
             <div class="form-group"><label>Note</label><input type="text" id="tx-note" value="${data ? data[5] : (currentParentId ? 'Part Payment' : '')}"></div>
             <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*" onchange="previewImage(this)"></div>`;
-        if (data && data[8]) { document.getElementById('img-preview').src = `https://drive.google.com/uc?id=${data[8]}`; document.getElementById('image-preview-container').style.display = 'block'; }
+
+        if (data && data[8]) {
+            document.getElementById('img-preview').src = `https://drive.google.com/uc?id=${data[8]}`;
+            document.getElementById('image-preview-container').style.display = 'block';
+        }
     }
     modal.style.display = 'flex';
 }
+
+function showTransactionDetails(tid) {
+    const tx = appData.transactions.find(t => t[12] === tid);
+    if (!tx) return;
+    const cust = appData.customers.find(c => c[8] === tx[1]);
+    const overlay = document.getElementById('details-modal-overlay');
+    const content = document.getElementById('details-content');
+
+    const linked = appData.transactions.filter(t => t[9] === tid);
+    const linkedRows = linked.map(l => `<tr><td>${new Date(parseInt(l[4])).toLocaleDateString()}</td><td>₹ ${l[2]}</td><td>${l[5] || ''}</td></tr>`).join('');
+
+    content.innerHTML = `
+        <div class="detail-header">
+            <span class="detail-amount" style="color:${tx[3]==='DEBIT'?'red':'green'}">₹ ${tx[2]}</span>
+            <span class="chip">${tx[3]}</span>
+        </div>
+        <div class="detail-meta">
+            <div><span class="label">Customer</span><span class="value">${cust?cust[1]:'Unknown'}</span></div>
+            <div><span class="label">Date</span><span class="value">${new Date(parseInt(tx[4])).toLocaleString()}</span></div>
+        </div>
+        ${tx[5] ? `<div class="detail-note">"${tx[5]}"</div>` : ''}
+        ${tx[8] ? `<img src="https://drive.google.com/uc?id=${tx[8]}" style="width:100%; border-radius:12px; cursor:pointer;" onclick="viewFullscreen('${tx[8]}')">` : ''}
+        ${linked.length > 0 ? `
+            <div class="linked-payments">
+                <h4>Linked Part Payments</h4>
+                <table class="mini-table"><thead><tr><th>Date</th><th>Amount</th><th>Note</th></tr></thead><tbody>${linkedRows}</tbody></table>
+            </div>` : ''}
+    `;
+
+    document.getElementById('details-edit-btn').onclick = () => { hideDetailsModal(); showModal('transaction', tid); };
+    document.getElementById('details-share-btn').onclick = () => shareTransaction(tid);
+    overlay.style.display = 'flex';
+}
+
+function hideDetailsModal() { document.getElementById('details-modal-overlay').style.display = 'none'; }
 
 function recordPartPayment(billId) {
     currentParentId = billId;
@@ -157,11 +212,28 @@ function recordPartPayment(billId) {
 
 function previewImage(i) {
     const r = new FileReader(); r.onload = (e) => {
-        document.getElementById('img-preview').src = e.target.result;
+        const preview = document.getElementById('img-preview');
+        preview.src = e.target.result;
         document.getElementById('image-preview-container').style.display = 'block';
-        if (currentEditId && findRecord(currentModalType, currentEditId)?.[8]) document.getElementById('confirm-replace-text').style.display = 'block';
+
+        // Ensure preview is clickable for fullscreen
+        preview.onclick = () => {
+            document.getElementById('fs-img').src = e.target.result;
+            document.getElementById('fs-viewer').style.display = 'flex';
+        };
+
+        const existingData = currentEditId ? findRecord('transaction', currentEditId) : null;
+        if (existingData && existingData[8]) document.getElementById('confirm-replace-text').style.display = 'block';
     };
     if (i.files[0]) r.readAsDataURL(i.files[0]);
+}
+
+function viewFullscreenFromPreview() {
+    const src = document.getElementById('img-preview').src;
+    if (src) {
+        document.getElementById('fs-img').src = src;
+        document.getElementById('fs-viewer').style.display = 'flex';
+    }
 }
 
 async function handleFormSubmit(e) {
@@ -200,6 +272,17 @@ async function saveTransaction() {
 }
 
 async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
+
+async function uploadToDrive(f) {
+    const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: f.type };
+    const fd = new FormData();
+    fd.append('metadata', new Blob([JSON.stringify(m)], { type: 'application/json' }));
+    fd.append('file', f);
+    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: fd });
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error?.message || 'Upload Failed');
+    return res.id;
+}
 
 async function updateOrAppendRow(s, sid, r, c) {
     const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
@@ -240,7 +323,23 @@ async function updateCustomerBalance(cid) {
 
 function shareTransaction(sid) {
     const tx = appData.transactions.find(t => t[12] === sid), c = appData.customers.find(x => x[8] === tx[1]);
-    const txt = `📜 Udaari Ledger Bill\nCustomer: ${c[1]}\nAmount: ₹${tx[2]}\nType: ${tx[3]}\nDate: ${new Date(parseInt(tx[4])).toLocaleDateString()}\nNote: ${tx[5] || 'N/A'}`;
+    const linked = appData.transactions.filter(t => t[9] === sid);
+    const received = linked.reduce((acc, l) => acc + parseFloat(l[2] || 0), 0);
+    const remaining = parseFloat(tx[2]) - received;
+
+    let txt = `
+📜 *Udaari Ledger Bill*
+----------------------------
+👤 *Customer:* ${c[1]}
+💰 *Total Bill:* ₹${tx[2]}
+📅 *Date:* ${new Date(parseInt(tx[4])).toLocaleDateString()}
+📄 *Note:* ${tx[5] || 'N/A'}
+----------------------------
+📥 *Received:* ₹${received}
+⌛ *Remaining:* ₹${remaining.toFixed(2)}
+----------------------------
+Generated via Udaari Ledger Web`.trim();
+
     if (navigator.share) navigator.share({ title: 'Bill', text: txt }); else { navigator.clipboard.writeText(txt); alert("Copied!"); }
 }
 
@@ -280,22 +379,7 @@ async function exportStatement(type) {
     let head = [['Date', 'Type', 'Amount', 'Note']];
     let body = txs.map(t => [new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']);
 
-    if (type === 'full') {
-        // Full includes details and extra styling if needed
-    }
-
     doc.autoTable({ startY: 60, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
     doc.save(`Statement_${cust[1]}.pdf`);
     hideExportModal();
-}
-
-async function uploadToDrive(f) {
-    const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: f.type };
-    const fd = new FormData();
-    fd.append('metadata', new Blob([JSON.stringify(m)], { type: 'application/json' }));
-    fd.append('file', f);
-    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }, body: fd });
-    const res = await r.json();
-    if (!res.ok) throw new Error(res.error?.message || 'Upload Failed');
-    return res.id;
 }
