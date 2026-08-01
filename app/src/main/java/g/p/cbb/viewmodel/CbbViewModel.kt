@@ -143,21 +143,21 @@ class CbbViewModel @Inject constructor(
         _selectedTransactionIds.value = current
     }
 
-    suspend fun getTransactionsWithDetails(ids: List<Long>): List<g.p.cbb.data.model.TransactionWithDetails> {
+    fun getTransactionsWithDetails(ids: List<Long>): List<g.p.cbb.data.model.TransactionWithDetails> {
         val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
         ids.forEach { id ->
             val transaction = transactions.value.find { it.id == id }
             if (transaction != null) {
-                list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, emptyList()))
+                list.add(g.p.cbb.data.model.TransactionWithDetails(transaction))
             }
         }
         return list.sortedByDescending { it.transaction.timestamp }
     }
 
-    suspend fun getAllTransactionsWithDetails(): List<g.p.cbb.data.model.TransactionWithDetails> {
+    fun getAllTransactionsWithDetails(): List<g.p.cbb.data.model.TransactionWithDetails> {
         val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
         transactions.value.forEach { transaction ->
-            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, emptyList()))
+            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction))
         }
         return list.sortedByDescending { it.transaction.timestamp }
     }
@@ -250,9 +250,9 @@ class CbbViewModel @Inject constructor(
         _selectedBillPayments.value = emptyList()
     }
 
-    fun updateSortOption(option: SortOption) {
-        _sortOption.value = option
-        settingsRepository.saveSortOption(option)
+    fun updateSortOption(SortOption: SortOption) {
+        _sortOption.value = SortOption
+        settingsRepository.saveSortOption(SortOption)
     }
 
     fun restoreLatest(context: android.content.Context) {

@@ -7,11 +7,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
-import android.os.Environment
 import android.widget.Toast
 import g.p.cbb.data.entity.Customer
-import g.p.cbb.data.entity.Transaction
-import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.data.model.TransactionWithDetails
 import java.io.File
 import java.io.FileOutputStream
@@ -37,8 +34,8 @@ object PdfGenerator {
         val pdfDocument = PdfDocument()
         val paint = Paint()
         var pageNumber = 1
-        var currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
-        var canvas = currentPage.canvas
+        val currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+        val canvas = currentPage.canvas
         var y = MARGIN
 
         // Title
@@ -154,7 +151,6 @@ object PdfGenerator {
 
         transactions.forEach { item ->
             val transaction = item.transaction
-            val billItems = item.billItems
             
             // Check if we need a new page for the transaction header
             if (y > PAGE_HEIGHT - 150f) {
@@ -182,26 +178,6 @@ object PdfGenerator {
             if (transaction.note.isNotEmpty()) {
                 canvas.drawText("Note: ${transaction.note}", MARGIN, y, paint)
                 y += 20f
-            }
-
-            // Draw Bill Items
-            if (billItems.isNotEmpty()) {
-                paint.isFakeBoldText = true
-                canvas.drawText("Items:", MARGIN, y, paint)
-                y += 20f
-                paint.isFakeBoldText = false
-                billItems.forEach { billItem ->
-                    if (y > PAGE_HEIGHT - MARGIN) {
-                        pdfDocument.finishPage(currentPage)
-                        pageNumber++
-                        currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
-                        canvas = currentPage.canvas
-                        y = MARGIN
-                    }
-                    canvas.drawText("• ${billItem.productName}", MARGIN + 20f, y, paint)
-                    canvas.drawText("₹${"%.2f".format(billItem.price)}", 480f, y, paint)
-                    y += 20f
-                }
             }
 
             // Draw Image Attachment

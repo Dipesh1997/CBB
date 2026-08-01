@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
@@ -422,7 +424,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                             context = context,
                             customer = currCust,
                             bill = currBill,
-                            items = emptyList(), // Bill items removed
                             payments = linkedPayments,
                             attachmentPath = currBill.attachmentPath
                         )

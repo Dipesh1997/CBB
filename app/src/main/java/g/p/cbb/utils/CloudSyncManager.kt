@@ -15,7 +15,6 @@ import com.google.api.services.sheets.v4.model.ValueRange
 import dagger.hilt.android.qualifiers.ApplicationContext
 import g.p.cbb.data.dao.*
 import g.p.cbb.data.entity.*
-import g.p.cbb.repository.CbbRepository
 import g.p.cbb.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -28,7 +27,6 @@ import javax.inject.Singleton
 @Singleton
 class CloudSyncManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val repository: CbbRepository,
     private val customerDao: CustomerDao,
     private val transactionDao: TransactionDao,
     private val settings: SettingsRepository,

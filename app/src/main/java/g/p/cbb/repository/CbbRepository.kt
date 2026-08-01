@@ -16,9 +16,7 @@ class CbbRepository @Inject constructor(
     private val database: AppDatabase,
     private val customerDao: CustomerDao,
     private val transactionDao: TransactionDao,
-    private val billItemDao: BillItemDao,
     private val activityLogDao: ActivityLogDao,
-    private val productSuggestionDao: ProductSuggestionDao,
     private val tombstoneDao: TombstoneDao,
     private val authManager: GoogleAuthManager
 ) {
@@ -60,18 +58,9 @@ class CbbRepository @Inject constructor(
     }
 
     suspend fun deleteCustomer(customer: Customer) = withContext(Dispatchers.IO) {
-        // 1. Fetch all transactions and bill items for cascading tombstone creation
+        // 1. Fetch all transactions for cascading tombstone creation
         val transactions = transactionDao.getTransactionsForCustomerList(customer.id)
         transactions.forEach { tx ->
-            val items = billItemDao.getBillItemsForTransaction(tx.id)
-            items.forEach { item ->
-                tombstoneDao.insertTombstone(Tombstone(
-                    tableName = "bill_items",
-                    originalServerId = item.serverId,
-                    summary = "Item: ${item.productName} (from ${tx.type} ₹${tx.amount} of ${customer.name})",
-                    contentJson = com.google.gson.Gson().toJson(item)
-                ))
-            }
             tombstoneDao.insertTombstone(Tombstone(
                 tableName = "transactions",
                 originalServerId = tx.serverId,
@@ -89,7 +78,7 @@ class CbbRepository @Inject constructor(
             contentJson = json
         ))
         
-        // 3. Delete from DB (CASCADE will handle children locally, but we've already tracked them for Sheets)
+        // 3. Delete from DB
         customerDao.deleteCustomer(customer)
         logActivity("Deleted Customer: ${customer.name}")
     }
@@ -107,7 +96,7 @@ class CbbRepository @Inject constructor(
             lastUpdated = System.currentTimeMillis(),
             syncStatus = 1
         )
-        val transactionId = transactionDao.insertTransaction(syncTransaction)
+        transactionDao.insertTransaction(syncTransaction)
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
         val updateTime = System.currentTimeMillis()
         customerDao.updateBalance(transaction.customerId, balanceChange, updateTime)

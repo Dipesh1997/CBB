@@ -9,8 +9,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import g.p.cbb.data.AppDatabase
 import g.p.cbb.data.dao.ActivityLogDao
-import g.p.cbb.data.dao.BillItemDao
-import g.p.cbb.data.dao.ProductSuggestionDao
 import g.p.cbb.data.dao.CustomerDao
 import g.p.cbb.data.dao.TransactionDao
 import g.p.cbb.data.dao.TombstoneDao
@@ -35,13 +33,7 @@ object DatabaseModule {
     fun provideTransactionDao(database: AppDatabase): TransactionDao = database.transactionDao()
 
     @Provides
-    fun provideBillItemDao(database: AppDatabase): BillItemDao = database.billItemDao()
-
-    @Provides
     fun provideActivityLogDao(database: AppDatabase): ActivityLogDao = database.activityLogDao()
-
-    @Provides
-    fun provideProductSuggestionDao(database: AppDatabase): ProductSuggestionDao = database.productSuggestionDao()
 
     @Provides
     fun provideTombstoneDao(database: AppDatabase): TombstoneDao = database.tombstoneDao()
