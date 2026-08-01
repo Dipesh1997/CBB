@@ -11,6 +11,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -23,15 +26,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
-import g.p.cbb.data.entity.BillItem
-import g.p.cbb.data.entity.ProductSuggestion
 import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.ui.components.EmptyStateGuidance
@@ -54,7 +54,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
     val selectedIds by viewModel.selectedTransactionIds.collectAsState()
 
     var showAddTransactionDialog by remember { mutableStateOf<TransactionType?>(null) }
-    var startInBillMode by remember { mutableStateOf(false) }
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var selectedTransactionIdForDetails by remember { mutableStateOf<Long?>(null) }
     var showReminderDialog by remember { mutableStateOf(false) }
@@ -181,13 +180,12 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
 
                         FloatingActionButton(
                             onClick = {
-                                startInBillMode = true
                                 showAddTransactionDialog = TransactionType.DEBIT
                             },
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "Create Bill")
+                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = "Add Bill")
                         }
                     }
                 }
@@ -248,7 +246,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                 ) {
                     Button(
                         onClick = { 
-                            startInBillMode = false
                             showAddTransactionDialog = TransactionType.DEBIT 
                         },
                         modifier = Modifier.weight(1f),
@@ -259,7 +256,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
 
                     Button(
                         onClick = { 
-                            startInBillMode = false
                             showAddTransactionDialog = TransactionType.CREDIT 
                         },
                         modifier = Modifier.weight(1f),
@@ -293,7 +289,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                                         viewModel.toggleTransactionSelection(transaction.id)
                                     } else {
                                         selectedTransactionIdForDetails = transaction.id
-                                        viewModel.fetchBillItems(transaction.id)
                                     }
                                 },
                                 onLongClick = {
@@ -332,12 +327,11 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
             type = TransactionType.DEBIT,
             initialAttachmentUri = uri,
             onDismiss = { showQuickCameraDialog = null },
-            onAdd = { amount, note, _, timestamp, attachmentPath ->
+            onAdd = { amount, note, timestamp, attachmentPath ->
                 viewModel.addTransaction(
                     amount = amount, 
                     type = TransactionType.DEBIT, 
                     note = note, 
-                    billItems = emptyList(), 
                     timestamp = timestamp,
                     attachmentPath = attachmentPath
                 )
@@ -350,42 +344,35 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
         AddTransactionDialog(
             viewModel = viewModel,
             type = type,
-            startInBillMode = startInBillMode,
             onDismiss = { 
                 showAddTransactionDialog = null
-                startInBillMode = false
             },
-            onAdd = { amount, note, billItems, timestamp, attachmentPath ->
+            onAdd = { amount, note, timestamp, attachmentPath ->
                 viewModel.addTransaction(
                     amount = amount, 
                     type = type, 
                     note = note, 
-                    billItems = billItems, 
                     timestamp = timestamp,
                     attachmentPath = attachmentPath
                 )
                 showAddTransactionDialog = null
-                startInBillMode = false
             }
         )
     }
 
     transactionToEdit?.let { transaction ->
-        val billItems by viewModel.selectedTransactionItems.collectAsState()
         AddTransactionDialog(
             viewModel = viewModel,
             type = transaction.type,
             initialAmount = transaction.amount.toString(),
             initialNote = transaction.note,
             initialTimestamp = transaction.timestamp,
-            initialBillItems = billItems.map { it.productName to it.price.toString() },
             initialAttachmentPath = transaction.attachmentPath,
             isEdit = true,
             onDismiss = { 
                 transactionToEdit = null
-                viewModel.clearBillItems()
             },
-            onAdd = { amount, note, items, timestamp, attachmentPath ->
+            onAdd = { amount, note, timestamp, attachmentPath ->
                 viewModel.updateTransaction(
                     oldTransaction = transaction, 
                     newTransaction = transaction.copy(
@@ -393,21 +380,22 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         note = note, 
                         timestamp = timestamp,
                         attachmentPath = attachmentPath
-                    ), 
-                    billItems = items
+                    )
                 )
                 transactionToEdit = null
-                viewModel.clearBillItems()
             }
         )
     }
 
     selectedTransactionIdForDetails?.let { id ->
-        val billItems by viewModel.selectedTransactionItems.collectAsState()
         val linkedPayments by viewModel.selectedBillPayments.collectAsState()
         val transaction = transactions.find { it.id == id }
+        
+        LaunchedEffect(id) {
+            viewModel.fetchBillItems(id)
+        }
+
         BillDetailsDialog(
-            billItems = billItems,
             transaction = transaction,
             linkedPayments = linkedPayments,
             onDismiss = {
@@ -434,7 +422,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                             context = context,
                             customer = currCust,
                             bill = currBill,
-                            items = billItems,
+                            items = emptyList(), // Bill items removed
                             payments = linkedPayments,
                             attachmentPath = currBill.attachmentPath
                         )
@@ -453,8 +441,6 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
             onOptionSelected = { option, start, end ->
                 showExportOptions = false
                 
-                // Fix: Material 3 DateRangePicker provides UTC timestamps.
-                // We need to convert these to Local Midnight.
                 val localStart = if (option == "Date") {
                     Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = start }.let {
                         Calendar.getInstance().apply {
@@ -516,7 +502,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
             file = file,
             onDismiss = { 
                 viewPdfFile = null
-                showPdfList = true // Go back to list
+                showPdfList = true 
             },
             onShare = {
                 try {
@@ -535,7 +521,7 @@ fun CustomerDetailScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                 if (file.delete()) {
                     android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
                     viewPdfFile = null
-                    showPdfList = true // Refresh list
+                    showPdfList = true 
                 }
             }
         )
@@ -617,19 +603,16 @@ fun AddTransactionDialog(
     initialAmount: String = "",
     initialNote: String = "",
     initialTimestamp: Long = System.currentTimeMillis(),
-    initialBillItems: List<Pair<String, String>> = emptyList(),
     initialAttachmentPath: String? = null,
     initialAttachmentUri: android.net.Uri? = null,
-    startInBillMode: Boolean = false,
     isEdit: Boolean = false,
     onDismiss: () -> Unit,
-    onAdd: (Double, String, List<BillItem>, Long, String?) -> Unit
+    onAdd: (Double, String, Long, String?) -> Unit
 ) {
     var amount by remember { mutableStateOf(initialAmount) }
     var note by remember { mutableStateOf(initialNote) }
-    var isBillMode by remember { mutableStateOf(initialBillItems.isNotEmpty() || startInBillMode) }
-    
     var selectedTimestamp by remember { mutableLongStateOf(initialTimestamp) }
+    
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     
@@ -638,137 +621,20 @@ fun AddTransactionDialog(
     var showReplacePhotoConfirm by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
+    val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+    val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
             attachmentUri = it
-            attachmentPath = null // Reset path to indicate new URI needs processing
-        }
-    }
-
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedTimestamp)
-    val timePickerState = rememberTimePickerState(
-        initialHour = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.HOUR_OF_DAY),
-        initialMinute = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.MINUTE)
-    )
-
-    val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-    val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
-
-    val billItems = remember { 
-        val list = mutableStateListOf<Pair<String, String>>()
-        list.addAll(initialBillItems)
-        if (list.isEmpty()) list.add("" to "")
-        list 
-    }
-
-    val suggestions by viewModel.productSuggestions.collectAsState(initial = emptyList())
-
-    var isListening by remember { mutableStateOf(false) }
-    val voiceRecognizer = remember {
-        lateinit var recognizer: VoiceRecognizer
-        recognizer = VoiceRecognizer(
-            context = context,
-            onResult = { text ->
-                // 1. Normalize number words to digits
-                val normalizedText = TextNormalizer.normalize(text)
-                
-                // 2. Identify commands "next" and "done"
-                // Split by keywords while keeping track of them
-                val segments = normalizedText.split("(?i)\\b(next|done)\\b".toRegex())
-                val commands = "(?i)\\b(next|done)\\b".toRegex().findAll(normalizedText).map { it.value.lowercase() }.toList()
-                
-                segments.forEachIndexed { index, segment ->
-                    val productPhrase = segment.trim()
-                    
-                            if (productPhrase.isNotEmpty()) {
-                                // Check for "last [number]" command
-                                val lastMatch = "(?i)\\blast\\s+(\\d+|one|two|three|four|for|five|six|seven|eight|nine|ten)\\b".toRegex().find(productPhrase)
-                                if (lastMatch != null) {
-                                    val qtyText = lastMatch.groupValues[1]
-                                    val qty = if (qtyText.any { it.isDigit() }) qtyText.toInt() else {
-                                        when(qtyText.lowercase()) {
-                                            "one" -> 1; "two" -> 2; "three" -> 3; "four" -> 4; "for" -> 4; "five" -> 5
-                                            "six" -> 6; "seven" -> 7; "eight" -> 8; "nine" -> 9; "ten" -> 10
-                                            else -> 1
-                                        }
-                                    }
-                                    
-                                    val lastIndex = billItems.size - 1
-                                    if (lastIndex >= 0) {
-                                        val currentItemName = billItems[lastIndex].first
-                                        val currentItemPrice = billItems[lastIndex].second.toDoubleOrNull() ?: 0.0
-                                        
-                                        // Find base suggestion even if current item was already multiplied
-                                        // We look for a suggestion whose name (without digits) matches the current name (without digits)
-                                        val currentNameClean = currentItemName.replace("\\d+".toRegex(), "").trim()
-                                        val suggestion = suggestions.find { s ->
-                                            val sNameClean = s.name.replace("\\d+".toRegex(), "").trim()
-                                            sNameClean.equals(currentNameClean, ignoreCase = true)
-                                        } ?: suggestions.find { it.name.equals(currentItemName, ignoreCase = true) }
-                                        
-                                        val (newName, newPrice) = ProductParser.applyQuantity(
-                                            currentName = currentItemName,
-                                            currentPrice = currentItemPrice,
-                                            newQuantity = qty,
-                                            units = suggestion?.units,
-                                            basePrice = suggestion?.lastPrice ?: currentItemPrice,
-                                            baseName = suggestion?.name ?: currentItemName
-                                        )
-                                        billItems[lastIndex] = newName to newPrice.toString()
-                                    }
-                                } else {
-                                    // Optimization: Prioritize Exact Name match FIRST, then Shortcut
-                                    val matched = suggestions.find { it.name.equals(productPhrase, ignoreCase = true) }
-                                        ?: suggestions.find { it.shortcut.equals(productPhrase, ignoreCase = true) }
-                                    
-                                    matched?.let { m ->
-                                        val lastIndex = billItems.size - 1
-                                        if (lastIndex >= 0) {
-                                            val formattedName = ProductParser.getFormattedName(m.name, m.units)
-                                            billItems[lastIndex] = formattedName to m.lastPrice.toString()
-                                        }
-                                    }
-                                }
-                            }
-                    
-                    // Handle command if one exists for this segment
-                    if (index < commands.size) {
-                        val cmd = commands[index]
-                        if (cmd == "next") {
-                            if (billItems.last().first.isNotEmpty()) {
-                                billItems.add("" to "")
-                            }
-                        } else if (cmd == "done") {
-                            recognizer.stopListening()
-                            val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
-                                .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
-                            val total = items.sumOf { it.price }
-                            onAdd(total, "Bill: ${items.size} items", items, selectedTimestamp, null)
-                        }
-                    }
-                }
-            },
-            onStateChange = { isListening = it }
-        )
-        recognizer
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { voiceRecognizer.destroy() }
-    }
-
-    val voicePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            voiceRecognizer.startListening()
+            attachmentPath = null
         }
     }
 
     if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedTimestamp)
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
@@ -790,6 +656,10 @@ fun AddTransactionDialog(
     }
 
     if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.HOUR_OF_DAY),
+            initialMinute = Calendar.getInstance().apply { timeInMillis = selectedTimestamp }.get(Calendar.MINUTE)
+        )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
@@ -807,217 +677,103 @@ fun AddTransactionDialog(
         )
     }
 
-    if (isBillMode) {
-        val totalBill = billItems.sumOf { it.second.toDoubleOrNull() ?: 0.0 }
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = {
-                Column {
-                    Text(if (isEdit) "Edit Bill" else "Create Bill")
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(dateFormat.format(Date(selectedTimestamp)), fontSize = 12.sp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp).clickable { showTimePicker = true })
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(timeFormat.format(Date(selectedTimestamp)), fontSize = 12.sp, modifier = Modifier.clickable { showTimePicker = true })
-                    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(if (isEdit) "Edit Entry" else (if (type == TransactionType.CREDIT) "Got Money" else "Gave Money"))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showDatePicker = true }) {
+                    Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(dateFormat.format(Date(selectedTimestamp)), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp).clickable { showTimePicker = true })
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(timeFormat.format(Date(selectedTimestamp)), fontSize = 12.sp, modifier = Modifier.clickable { showTimePicker = true })
                 }
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                        items(billItems.size) { index ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1.5f).padding(end = 4.dp)) {
-                                    TextField(
-                                        value = billItems[index].first,
-                                        onValueChange = { billItems[index] = it to billItems[index].second },
-                                        label = { Text("Product") },
-                                        leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    
-                                    val filteredSuggestions = suggestions.filter { 
-                                        it.name.contains(billItems[index].first, ignoreCase = true)
-                                    }
-                                    if (filteredSuggestions.isNotEmpty() && billItems[index].first.isNotEmpty()) {
-                                        Card(modifier = Modifier.fillMaxWidth()) {
-                                            filteredSuggestions.take(3).forEach { suggestion ->
-                                                val displayName = ProductParser.getFormattedName(suggestion.name, suggestion.units)
-                                                DropdownMenuItem(
-                                                    text = { Text("$displayName (₹${suggestion.lastPrice})") },
-                                                    onClick = { 
-                                                        billItems[index] = displayName to suggestion.lastPrice.toString()
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                TextField(
-                                    value = billItems[index].second,
-                                    onValueChange = { billItems[index] = billItems[index].first to it },
-                                    label = { Text("Price") },
-                                    leadingIcon = { Icon(Icons.Default.Payments, contentDescription = null) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { billItems.add("" to "") }) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Text("New Line")
-                        }
-                        
-                        IconButton(
-                            onClick = {
-                                if (isListening) {
-                                    voiceRecognizer.stopListening()
-                                } else {
-                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
-                                contentDescription = "Voice Typing",
-                                tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Total Bill: ₹${"%.2f".format(totalBill)}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val items = billItems.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
-                        .map { BillItem(productName = it.first, price = it.second.toDoubleOrNull() ?: 0.0, transactionId = 0) }
-                    onAdd(totalBill, "Bill: ${items.size} items", items, selectedTimestamp, null)
-                }) { Text("Finish Bill") }
-            },
-            dismissButton = {
-                TextButton(onClick = { 
-                    if (startInBillMode) onDismiss() else isBillMode = false 
-                }) { Text("Back") }
             }
-        )
-    } else {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = {
-                Column {
-                    Text(if (isEdit) "Edit Entry" else (if (type == TransactionType.CREDIT) "Got Money" else "Gave Money"))
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+        },
+        text = {
+            Column {
+                TextField(
+                    value = amount,
+                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) amount = it },
+                    label = { Text("Amount") },
+                    leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TextField(
+                    value = note, 
+                    onValueChange = { note = it }, 
+                    label = { Text("Note (Optional)") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { 
+                            if (attachmentUri != null || attachmentPath != null) showReplacePhotoConfirm = true
+                            else galleryLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.AttachFile, null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(dateFormat.format(Date(selectedTimestamp)), fontSize = 12.sp)
+                        Text("Attach Photo")
+                    }
+                    
+                    if (attachmentUri != null || attachmentPath != null) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp).clickable { showTimePicker = true })
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(timeFormat.format(Date(selectedTimestamp)), fontSize = 12.sp, modifier = Modifier.clickable { showTimePicker = true })
-                    }
-                }
-            },
-            text = {
-                Column {
-                    TextField(
-                        value = amount,
-                        onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) amount = it },
-                        label = { Text("Amount") },
-                        leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) }
-                    )
-                    TextField(
-                        value = note, 
-                        onValueChange = { note = it }, 
-                        label = { Text("Note (Optional)") },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) }
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Photo Attachment Area
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = { 
-                                if (attachmentUri != null || attachmentPath != null) {
-                                    showReplacePhotoConfirm = true
-                                } else {
-                                    galleryLauncher.launch("image/*")
-                                }
+                        AsyncImage(
+                            model = attachmentUri ?: attachmentPath,
+                            contentDescription = "Preview",
+                            modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small).clickable {
+                                showReplacePhotoConfirm = true
                             },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.AttachFile, null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Attach Photo")
-                        }
-                        
-                        if (attachmentUri != null || attachmentPath != null) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            AsyncImage(
-                                model = attachmentUri ?: attachmentPath,
-                                contentDescription = "Preview",
-                                modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small).clickable {
-                                    showReplacePhotoConfirm = true
-                                },
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-
-                    if (showReplacePhotoConfirm) {
-                        AlertDialog(
-                            onDismissRequest = { showReplacePhotoConfirm = false },
-                            title = { Text("Replace Photo?") },
-                            text = { Text("Do you want to replace or remove the current photo attachment?") },
-                            confirmButton = {
-                                Button(onClick = {
-                                    showReplacePhotoConfirm = false
-                                    galleryLauncher.launch("image/*")
-                                }) { Text("Replace") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = {
-                                    attachmentUri = null
-                                    attachmentPath = null
-                                    showReplacePhotoConfirm = false
-                                }) { Text("Remove", color = Color.Red) }
-                            }
+                            contentScale = ContentScale.Crop
                         )
                     }
-
-                    if (type == TransactionType.DEBIT && !isEdit) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        OutlinedButton(onClick = { 
-                            isBillMode = true
-                            if (billItems.isEmpty()) billItems.add("" to "")
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Create Itemized Bill Instead")
-                        }
-                    }
                 }
-            },
-            confirmButton = {
-                Button(onClick = { 
-                    val finalPath = attachmentUri?.let { ImageUtils.saveCompressedAttachment(context, it) } ?: attachmentPath
-                    onAdd(amount.toDoubleOrNull() ?: 0.0, note, emptyList(), selectedTimestamp, finalPath) 
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+
+                if (showReplacePhotoConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showReplacePhotoConfirm = false },
+                        title = { Text("Replace Photo?") },
+                        text = { Text("Do you want to replace or remove the current photo attachment?") },
+                        confirmButton = {
+                            Button(onClick = {
+                                showReplacePhotoConfirm = false
+                                galleryLauncher.launch("image/*")
+                            }) { Text("Replace") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                attachmentUri = null
+                                attachmentPath = null
+                                showReplacePhotoConfirm = false
+                            }) { Text("Remove", color = Color.Red) }
+                        }
+                    )
+                }
             }
-        )
-    }
+        },
+        confirmButton = {
+            Button(onClick = { 
+                val finalPath = attachmentUri?.let { ImageUtils.saveCompressedAttachment(context, it) } ?: attachmentPath
+                onAdd(amount.toDoubleOrNull() ?: 0.0, note, selectedTimestamp, finalPath) 
+            }) { Text(if (isEdit) "Update" else "Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
 fun BillDetailsDialog(
-    billItems: List<BillItem>, 
     transaction: Transaction?, 
     linkedPayments: List<Transaction>,
     onDismiss: () -> Unit,
@@ -1027,12 +783,15 @@ fun BillDetailsDialog(
     onShare: () -> Unit,
     onImageClick: (String) -> Unit
 ) {
+    if (transaction == null) return
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Bill Details", modifier = Modifier.weight(1f))
-                if (transaction?.type == TransactionType.DEBIT) {
+                if (transaction.type == TransactionType.DEBIT) {
                     IconButton(onClick = onShare) {
                         Icon(Icons.Default.Share, contentDescription = "Share Bill")
                     }
@@ -1041,7 +800,7 @@ fun BillDetailsDialog(
         },
         text = {
             Column {
-                val imageSource = transaction?.attachmentPath ?: transaction?.driveFileId?.let { "https://drive.google.com/thumbnail?id=$it" }
+                val imageSource = transaction.attachmentPath ?: transaction.driveFileId?.let { "https://drive.google.com/thumbnail?id=$it" }
                 if (imageSource != null) {
                     AsyncImage(
                         model = imageSource,
@@ -1051,41 +810,41 @@ fun BillDetailsDialog(
                             .height(200.dp)
                             .clip(MaterialTheme.shapes.medium)
                             .clickable { 
-                                transaction?.attachmentPath?.let { onImageClick(it) }
-                                    ?: transaction?.driveFileId?.let { onImageClick("https://drive.google.com/file/d/$it/view") }
+                                transaction.attachmentPath?.let { onImageClick(it) }
+                                    ?: transaction.driveFileId?.let { onImageClick("https://drive.google.com/file/d/$it/view") }
                             }
                             .padding(bottom = 16.dp),
                         contentScale = ContentScale.Fit
                     )
                 }
 
-                if (billItems.isEmpty()) {
-                    if (transaction?.note.isNullOrEmpty()) {
-                        Text("Lumpsum", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    } else {
-                        Text("Note: ${transaction?.note}", fontSize = 16.sp)
-                    }
+                if (transaction.note.isEmpty()) {
+                    Text("Lumpsum", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 } else {
-                    LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                        items(billItems) { item ->
-                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(item.productName, modifier = Modifier.weight(1f))
-                                Text("₹${"%.2f".format(item.price)}", fontWeight = FontWeight.Bold)
-                            }
-                            HorizontalDivider()
+                    Text("Note: ${transaction.note}", fontSize = 16.sp)
+                }
+                
+                if (linkedPayments.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Linked Payments:", fontWeight = FontWeight.Bold)
+                    linkedPayments.forEach { pay ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(dateFormat.format(Date(pay.timestamp)), modifier = Modifier.weight(1f))
+                            Text("₹${"%.2f".format(pay.amount)}", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                         }
+                        HorizontalDivider()
                     }
-                    
-                    val totalBill = billItems.sumOf { it.price }
+                }
+                
+                if (transaction.type == TransactionType.DEBIT) {
+                    val totalBill = transaction.amount
                     val totalReceived = linkedPayments.sumOf { it.amount }
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Total Bill: ₹${"%.2f".format(totalBill)}", fontSize = 14.sp)
                     Text("Total Received: ₹${"%.2f".format(totalReceived)}", fontSize = 14.sp, color = Color(0xFF4CAF50))
                     Text("Remaining: ₹${"%.2f".format(totalBill - totalReceived)}", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = Color(0xFFF44336))
-                }
-                
-                if (transaction?.type == TransactionType.DEBIT) {
+                    
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedButton(onClick = onRecordPayment, modifier = Modifier.fillMaxWidth()) {
                         Text("Record Part Payment")

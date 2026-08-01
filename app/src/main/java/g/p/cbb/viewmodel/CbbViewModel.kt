@@ -108,7 +108,6 @@ class CbbViewModel @Inject constructor(
             repository.markLogsAsRead()
         }
     }
-    val productSuggestions = repository.getProductSuggestions()
 
     private val _backupHistory = MutableStateFlow<List<java.io.File>>(emptyList())
     val backupHistory = _backupHistory.asStateFlow()
@@ -122,9 +121,6 @@ class CbbViewModel @Inject constructor(
 
     private val _transactions = MutableStateFlow<List<Transaction>>(emptyList())
     val transactions = _transactions.asStateFlow()
-
-    private val _selectedTransactionItems = MutableStateFlow<List<BillItem>>(emptyList())
-    val selectedTransactionItems = _selectedTransactionItems.asStateFlow()
 
     private val _selectedBillPayments = MutableStateFlow<List<Transaction>>(emptyList())
     val selectedBillPayments = _selectedBillPayments.asStateFlow()
@@ -152,8 +148,7 @@ class CbbViewModel @Inject constructor(
         ids.forEach { id ->
             val transaction = transactions.value.find { it.id == id }
             if (transaction != null) {
-                val items = repository.getBillItemsForTransaction(id)
-                list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, items))
+                list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, emptyList()))
             }
         }
         return list.sortedByDescending { it.transaction.timestamp }
@@ -162,8 +157,7 @@ class CbbViewModel @Inject constructor(
     suspend fun getAllTransactionsWithDetails(): List<g.p.cbb.data.model.TransactionWithDetails> {
         val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
         transactions.value.forEach { transaction ->
-            val items = repository.getBillItemsForTransaction(transaction.id)
-            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, items))
+            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction, emptyList()))
         }
         return list.sortedByDescending { it.transaction.timestamp }
     }
@@ -205,7 +199,6 @@ class CbbViewModel @Inject constructor(
         amount: Double, 
         type: TransactionType, 
         note: String, 
-        billItems: List<BillItem> = emptyList(), 
         timestamp: Long = System.currentTimeMillis(),
         attachmentPath: String? = null
     ) {
@@ -220,7 +213,6 @@ class CbbViewModel @Inject constructor(
                     timestamp = timestamp,
                     attachmentPath = attachmentPath
                 ),
-                billItems,
                 timestamp
             )
             refreshCustomer(customer.id)
@@ -228,9 +220,9 @@ class CbbViewModel @Inject constructor(
         }
     }
 
-    fun updateTransaction(oldTransaction: Transaction, newTransaction: Transaction, billItems: List<BillItem> = emptyList()) {
+    fun updateTransaction(oldTransaction: Transaction, newTransaction: Transaction) {
         viewModelScope.launch {
-            repository.updateTransaction(oldTransaction, newTransaction, billItems)
+            repository.updateTransaction(oldTransaction, newTransaction)
             refreshCustomer(newTransaction.customerId)
             performSync(isManual = false)
         }
@@ -250,42 +242,17 @@ class CbbViewModel @Inject constructor(
 
     fun fetchBillItems(transactionId: Long) {
         viewModelScope.launch {
-            _selectedTransactionItems.value = repository.getBillItemsForTransaction(transactionId)
             _selectedBillPayments.value = repository.getLinkedTransactions(transactionId)
         }
     }
 
     fun clearBillItems() {
-        _selectedTransactionItems.value = emptyList()
         _selectedBillPayments.value = emptyList()
     }
 
     fun updateSortOption(option: SortOption) {
         _sortOption.value = option
         settingsRepository.saveSortOption(option)
-    }
-
-    fun addProduct(name: String, price: Double, shortcut: String? = null, units: String? = null, onResult: (String?) -> Unit = {}) {
-        viewModelScope.launch {
-            val error = repository.addProductSuggestion(name, price, shortcut, units)
-            onResult(error)
-            if (error == null) performSync(isManual = false)
-        }
-    }
-
-    fun updateProduct(suggestion: ProductSuggestion, onResult: (String?) -> Unit = {}) {
-        viewModelScope.launch {
-            val error = repository.updateProductSuggestion(suggestion)
-            onResult(error)
-            if (error == null) performSync(isManual = false)
-        }
-    }
-
-    fun deleteProduct(suggestion: ProductSuggestion) {
-        viewModelScope.launch {
-            repository.deleteProductSuggestion(suggestion)
-            performSync(isManual = false)
-        }
     }
 
     fun restoreLatest(context: android.content.Context) {

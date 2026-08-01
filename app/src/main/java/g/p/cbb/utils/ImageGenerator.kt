@@ -8,7 +8,6 @@ import android.util.Log
 import android.view.Gravity
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import g.p.cbb.data.entity.BillItem
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.entity.Transaction
 import java.io.File
@@ -21,7 +20,6 @@ object ImageGenerator {
         context: Context,
         customer: Customer,
         bill: Transaction,
-        items: List<BillItem>,
         payments: List<Transaction>,
         attachmentPath: String? = null
     ) {
@@ -29,10 +27,9 @@ object ImageGenerator {
         val totalPaid = payments.sumOf { it.amount }
         
         val width = 600
-        val baseHeight = 900
-        val itemsHeight = (items.size * 40)
+        val baseHeight = 700
         val paymentsHeight = (payments.size * 40)
-        val totalHeight = baseHeight + itemsHeight + paymentsHeight
+        val totalHeight = baseHeight + paymentsHeight
         
         val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -63,52 +60,33 @@ object ImageGenerator {
         canvas.drawText("Bill Date: ${dateFormat.format(Date(bill.timestamp))}", 40f, y, paint)
         y += 60f
         
-        if (items.isNotEmpty()) {
-            paint.isFakeBoldText = true
-            canvas.drawText("Items", 40f, y, paint)
-            canvas.drawText("Price", 480f, y, paint)
-            y += 20f
-            canvas.drawLine(40f, y, 560f, y, paint)
-            y += 40f
-            
+        // Prominent text
+        paint.color = Color.parseColor("#3F51B5")
+        paint.isFakeBoldText = true
+        paint.textSize = 28f
+        canvas.drawText("BILL TRANSACTION", 40f, y, paint)
+        y += 40f
+        
+        paint.color = Color.BLACK
+        paint.textSize = 32f
+        canvas.drawText("Amount: ₹${"%.2f".format(bill.amount)}", 40f, y, paint)
+        y += 45f
+        
+        if (bill.note.isNotEmpty()) {
+            paint.textSize = 24f
             paint.isFakeBoldText = false
-            items.forEach { item ->
-                canvas.drawText(item.productName, 40f, y, paint)
-                canvas.drawText("₹${"%.2f".format(item.price)}", 480f, y, paint)
-                y += 40f
-            }
-            y += 20f
-            canvas.drawLine(40f, y, 560f, y, paint)
+            canvas.drawText("Note: ${bill.note}", 40f, y, paint)
             y += 40f
-        } else {
-            // Prominent Lumpsum text
-            paint.color = Color.parseColor("#3F51B5")
-            paint.isFakeBoldText = true
-            paint.textSize = 28f
-            canvas.drawText("LUMPSUM TRANSACTION", 40f, y, paint)
-            y += 40f
-            
-            paint.color = Color.BLACK
-            paint.textSize = 32f
-            canvas.drawText("Amount: ₹${"%.2f".format(bill.amount)}", 40f, y, paint)
-            y += 45f
-            
-            if (bill.note.isNotEmpty()) {
-                paint.textSize = 24f
-                paint.isFakeBoldText = false
-                canvas.drawText("Note: ${bill.note}", 40f, y, paint)
-                y += 40f
-            }
-            
-            if (attachmentPath != null) {
-                paint.color = Color.GRAY
-                paint.textSize = 20f
-                canvas.drawText("(Photo Attachment Included)", 40f, y, paint)
-                y += 40f
-            }
-            y += 10f
-            paint.color = Color.BLACK
         }
+        
+        if (attachmentPath != null) {
+            paint.color = Color.GRAY
+            paint.textSize = 20f
+            canvas.drawText("(Photo Attachment Included)", 40f, y, paint)
+            y += 40f
+        }
+        y += 10f
+        paint.color = Color.BLACK
         
         paint.isFakeBoldText = true
         canvas.drawText("Total Bill Amount:", 40f, y, paint)

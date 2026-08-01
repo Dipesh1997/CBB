@@ -52,7 +52,6 @@ class MainActivity : ComponentActivity() {
 sealed class Screen(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object History : Screen("history", "History", Icons.Default.History)
-    object Products : Screen("products", "Products", Icons.Default.Inventory2)
     object Backup : Screen("backup", "Backup", Icons.Default.Settings)
     object Collab : Screen("collab", "Team", Icons.Default.Person)
 }
@@ -141,7 +140,6 @@ fun CbbApp() {
     val items = listOf(
         Screen.Home,
         Screen.History,
-        Screen.Products,
         Screen.Collab,
         Screen.Backup
     )
@@ -204,9 +202,6 @@ fun CbbApp() {
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() }
                 )
-            }
-            composable(Screen.Products.route) {
-                ProductsScreen(viewModel = viewModel)
             }
             composable(Screen.Collab.route) {
                 CollaborationScreen(viewModel = viewModel)

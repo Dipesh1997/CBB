@@ -99,7 +99,6 @@ class CbbRepository @Inject constructor(
 
     suspend fun addTransaction(
         transaction: Transaction, 
-        billItems: List<BillItem> = emptyList(), 
         timestamp: Long = System.currentTimeMillis()
     ) = withContext(Dispatchers.IO) {
         val syncTransaction = transaction.copy(
@@ -109,45 +108,6 @@ class CbbRepository @Inject constructor(
             syncStatus = 1
         )
         val transactionId = transactionDao.insertTransaction(syncTransaction)
-        if (billItems.isNotEmpty()) {
-            val itemsWithSync = billItems.map { it.copy(
-                transactionId = transactionId,
-                lastUpdated = System.currentTimeMillis(),
-                syncStatus = 1
-            ) }
-            billItemDao.insertBillItems(itemsWithSync)
-            // Save suggestions
-            billItems.forEach { item ->
-                val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
-                val baseShortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
-                
-                val existing = productSuggestionDao.getSuggestionByNameAndUnits(item.productName, units)
-                val suggestion = if (existing != null) {
-                    existing.copy(lastPrice = item.price, shortcut = baseShortcut, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
-                } else {
-                    var uniqueShortcut = baseShortcut
-                    var counter = 1
-                    // Optimization: Check for shortcut uniqueness once if possible, or use a better strategy
-                    while (productSuggestionDao.getSuggestionByShortcut(uniqueShortcut) != null) {
-                        uniqueShortcut = "${baseShortcut}_${counter++}"
-                    }
-                    ProductSuggestion(
-                        name = item.productName, 
-                        lastPrice = item.price,
-                        shortcut = uniqueShortcut,
-                        units = units,
-                        createdBy = getCurrentUser(),
-                        lastUpdated = System.currentTimeMillis(),
-                        syncStatus = 1
-                    )
-                }
-                try {
-                    productSuggestionDao.upsertSuggestion(suggestion)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
         val balanceChange = if (transaction.type == TransactionType.CREDIT) -transaction.amount else transaction.amount
         val updateTime = System.currentTimeMillis()
         customerDao.updateBalance(transaction.customerId, balanceChange, updateTime)
@@ -156,7 +116,7 @@ class CbbRepository @Inject constructor(
         logActivity("Added ${transaction.type} of ₹${transaction.amount} for ${customer?.name ?: "Unknown"}")
     }
 
-    suspend fun updateTransaction(oldTransaction: Transaction, newTransaction: Transaction, billItems: List<BillItem> = emptyList()) = withContext(Dispatchers.IO) {
+    suspend fun updateTransaction(oldTransaction: Transaction, newTransaction: Transaction) = withContext(Dispatchers.IO) {
         val syncTime = System.currentTimeMillis()
         val syncTransaction = newTransaction.copy(
             lastUpdated = syncTime,
@@ -171,43 +131,6 @@ class CbbRepository @Inject constructor(
 
         transactionDao.insertTransaction(syncTransaction)
 
-        val itemsWithSync = billItems.map { it.copy(
-            transactionId = syncTransaction.id,
-            lastUpdated = System.currentTimeMillis(),
-            syncStatus = 1
-        ) }
-        billItemDao.insertBillItems(itemsWithSync)
-
-        billItems.forEach { item ->
-            val units = g.p.cbb.utils.ProductParser.extractUnits(item.productName)
-            val baseShortcut = g.p.cbb.utils.ProductParser.generateShortcut(item.productName)
-            
-            val existing = productSuggestionDao.getSuggestionByNameAndUnits(item.productName, units)
-            val suggestion = if (existing != null) {
-                existing.copy(lastPrice = item.price, shortcut = baseShortcut, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
-            } else {
-                var uniqueShortcut = baseShortcut
-                var counter = 1
-                while (productSuggestionDao.getSuggestionByShortcut(uniqueShortcut) != null) {
-                    uniqueShortcut = "${baseShortcut}_${counter++}"
-                }
-                ProductSuggestion(
-                    name = item.productName, 
-                    lastPrice = item.price,
-                    shortcut = uniqueShortcut,
-                    units = units,
-                    createdBy = getCurrentUser(),
-                    lastUpdated = System.currentTimeMillis(),
-                    syncStatus = 1
-                )
-            }
-            try {
-                productSuggestionDao.upsertSuggestion(suggestion)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
         val customer = customerDao.getCustomerById(syncTransaction.customerId)
         logActivity("Updated ${syncTransaction.type} for ${customer?.name ?: "Unknown"}: ₹${oldTransaction.amount} -> ₹${syncTransaction.amount}")
     }
@@ -217,19 +140,7 @@ class CbbRepository @Inject constructor(
         val reverseAmount = if (transaction.type == TransactionType.CREDIT) transaction.amount else -transaction.amount
         customerDao.updateBalance(transaction.customerId, reverseAmount, syncTime)
         
-        // 1. Fetch linked items to track their deletion
-        val items = billItemDao.getBillItemsForTransaction(transaction.id)
-        items.forEach { item ->
-            val itemJson = com.google.gson.Gson().toJson(item)
-            tombstoneDao.insertTombstone(Tombstone(
-                tableName = "bill_items",
-                originalServerId = item.serverId,
-                summary = "Product Item: ${item.productName} from Bill #${transaction.id}",
-                contentJson = itemJson
-            ))
-        }
-
-        // 2. Track transaction deletion
+        // Tracking transaction deletion
         val json = com.google.gson.Gson().toJson(transaction)
         val summary = "Transaction: ${transaction.type} ₹${transaction.amount} (${transaction.note})"
         tombstoneDao.insertTombstone(Tombstone(
@@ -242,9 +153,6 @@ class CbbRepository @Inject constructor(
         val customer = customerDao.getCustomerById(transaction.customerId)
         logActivity("Deleted ${transaction.type} of ₹${transaction.amount} for ${customer?.name ?: "Unknown"}")
     }
-
-    suspend fun getBillItemsForTransaction(transactionId: Long): List<BillItem> =
-        billItemDao.getBillItemsForTransaction(transactionId)
 
     suspend fun getLinkedTransactions(parentId: Long): List<Transaction> =
         transactionDao.getLinkedTransactions(parentId)
@@ -261,51 +169,6 @@ class CbbRepository @Inject constructor(
         activityLogDao.markAllAsRead()
     }
 
-    fun getProductSuggestions(): Flow<List<ProductSuggestion>> = productSuggestionDao.getAllSuggestions()
-
-    suspend fun addProductSuggestion(name: String, price: Double, shortcut: String? = null, units: String? = null): String? {
-        return try {
-            productSuggestionDao.upsertSuggestion(
-                ProductSuggestion(
-                    name = name,
-                    lastPrice = price,
-                    shortcut = shortcut,
-                    units = units,
-                    createdBy = getCurrentUser(),
-                    lastUpdated = System.currentTimeMillis(),
-                    syncStatus = 1
-                )
-            )
-            null
-        } catch (e: Exception) {
-            e.message ?: "Failed to add product"
-        }
-    }
-
-    suspend fun updateProductSuggestion(suggestion: ProductSuggestion): String? {
-        return try {
-            val syncSuggestion = suggestion.copy(
-                lastUpdated = System.currentTimeMillis(),
-                syncStatus = 1
-            )
-            productSuggestionDao.updateSuggestion(syncSuggestion)
-            null
-        } catch (e: Exception) {
-            e.message ?: "Update failed"
-        }
-    }
-
-    suspend fun deleteProductSuggestion(suggestion: ProductSuggestion) {
-        val json = com.google.gson.Gson().toJson(suggestion)
-        tombstoneDao.insertTombstone(Tombstone(
-            tableName = "product_suggestions", 
-            originalServerId = suggestion.serverId, 
-            summary = "Product: ${suggestion.name} (${suggestion.units ?: ""})",
-            contentJson = json
-        ))
-        productSuggestionDao.deleteSuggestion(suggestion)
-    }
-
     suspend fun logCloudActivity(description: String) {
         activityLogDao.insertLog(ActivityLog(description = description, isCloudUpdate = true, isRead = false))
     }
@@ -313,9 +176,7 @@ class CbbRepository @Inject constructor(
     suspend fun markAllDataAsUnsynced() = withContext(Dispatchers.IO) {
         customerDao.markAllAsUnsynced()
         transactionDao.markAllAsUnsynced()
-        productSuggestionDao.markAllAsUnsynced()
         activityLogDao.markAllAsUnsynced()
-        billItemDao.markAllAsUnsynced()
         logActivity("Marked all data for Cloud Sync")
     }
 

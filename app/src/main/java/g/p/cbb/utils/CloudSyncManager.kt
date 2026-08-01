@@ -91,7 +91,7 @@ class CloudSyncManager @Inject constructor(
                 val accounts = am.getAccountsByType("com.google")
                 if (accounts.isNotEmpty()) {
                     email = accounts[0].name
-                    authManager.forceAccountLink(email!!)
+                    authManager.forceAccountLink(email)
                     Log.i("CloudSync", "Auto-picked system account: $email")
                 } else {
                     Log.w("CloudSync", "Sync skipped: No Google account found on device")
@@ -99,8 +99,8 @@ class CloudSyncManager @Inject constructor(
                 }
             }
             
-            val sheets = getSheetsService(email!!)
-            val drive = getDriveService(email!!)
+            val sheets = getSheetsService(email)
+            val drive = getDriveService(email)
 
             try {
                 var spreadsheetId = settings.getSpreadsheetId()
@@ -109,6 +109,7 @@ class CloudSyncManager @Inject constructor(
                     settings.saveSpreadsheetId(spreadsheetId)
                 }
 
+                // Force setup headers to ensure 13-column layout is applied (fixes 400 Bad Request)
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
                 pushCustomers(sheets, spreadsheetId)

@@ -11,21 +11,17 @@ import g.p.cbb.data.entity.*
     entities = [
         Customer::class, 
         Transaction::class, 
-        BillItem::class, 
         ActivityLog::class, 
-        ProductSuggestion::class,
         Tombstone::class
     ], 
-    version = 17, 
+    version = 18, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun customerDao(): CustomerDao
     abstract fun transactionDao(): TransactionDao
-    abstract fun billItemDao(): BillItemDao
     abstract fun activityLogDao(): ActivityLogDao
-    abstract fun productSuggestionDao(): ProductSuggestionDao
     abstract fun tombstoneDao(): TombstoneDao
 }
 
