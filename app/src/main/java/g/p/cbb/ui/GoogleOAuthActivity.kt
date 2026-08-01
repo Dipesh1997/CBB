@@ -21,9 +21,9 @@ class GoogleOAuthActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val clientId = intent.getStringExtra("CLIENT_ID") ?: "812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com"
+        val clientId = intent.getStringExtra("CLIENT_ID") ?: "812006416646-frvukuj4l9sqmishlsv2kp7clckd2vbd.apps.googleusercontent.com"
         val scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
-        val redirectUri = "https://developers.google.com/oauthplayground"
+        val redirectUri = "http://localhost"
         
         val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
                 "client_id=$clientId&" +
@@ -52,7 +52,7 @@ class GoogleOAuthActivity : ComponentActivity() {
 
                                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                         val url = request?.url?.toString() ?: ""
-                                        if (url.contains("access_token=")) {
+                                        if (url.contains("access_token=") || url.startsWith("http://localhost")) {
                                             extractTokenAndFinish(url)
                                             return true
                                         }
