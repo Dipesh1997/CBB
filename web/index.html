@@ -36,11 +36,8 @@
 
     <div class="main-container">
         <nav id="sidebar" style="display: none;">
-            <button onclick="showSection('overview')" id="nav-overview" class="active">
-                <span class="material-icons">dashboard</span> Overview
-            </button>
-            <button onclick="showSection('customers')" id="nav-customers">
-                <span class="material-icons">people</span> Customers
+            <button onclick="showSection('home')" id="nav-home" class="active">
+                <span class="material-icons">home</span> Home
             </button>
             <button onclick="showSection('transactions')" id="nav-transactions">
                 <span class="material-icons">history</span> Transactions
@@ -56,8 +53,8 @@
                 <p>Please sign in to access your dashboard.</p>
             </div>
 
-            <section id="overview" class="section">
-                <h2>Business Overview</h2>
+            <section id="home" class="section">
+                <h2>Overview & Customers</h2>
                 <div class="stats-grid">
                     <div class="stat-card receivable">
                         <div>Total Receivables</div>
@@ -68,20 +65,12 @@
                         <div id="total-advance" class="stat-value">₹ 0</div>
                     </div>
                 </div>
-                <div class="card" style="margin-top: 24px;">
-                    <h3>Quick Stats</h3>
-                    <p>Total Customers: <span id="count-customers">0</span></p>
-                    <p>Total Transactions: <span id="count-transactions">0</span></p>
-                </div>
-            </section>
 
-            <section id="customers" class="section">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2>Customers</h2>
-                    <div style="display: flex; gap: 12px;">
-                        <input type="text" id="customer-search" class="search-bar" placeholder="Search customers..." style="max-width: 200px; margin-bottom: 0;" onkeyup="filterCustomers()">
-                    </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; margin-bottom: 16px;">
+                    <h3>Customer List</h3>
+                    <input type="text" id="customer-search" class="search-bar" placeholder="Search customers..." style="max-width: 300px; margin-bottom: 0;" onkeyup="filterCustomers()">
                 </div>
+
                 <div class="card">
                     <table id="customers-table">
                         <thead>
@@ -141,7 +130,7 @@
             <section id="customer-ledger" class="section">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 16px;">
-                        <span class="material-icons action-icon" onclick="showSection('customers')">arrow_back</span>
+                        <span class="material-icons action-icon" onclick="showSection('home')">arrow_back</span>
                         <h2 id="ledger-title">Customer Ledger</h2>
                     </div>
                     <div style="display: flex; gap: 12px; align-items: center;">
