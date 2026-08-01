@@ -284,7 +284,9 @@ async function compressImage(f, mw, q) {
 
 async function imageToBase64(did) {
     try {
-        const response = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`);
+        const response = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`, {
+            headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }
+        });
         const blob = await response.blob();
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -339,8 +341,10 @@ async function exportStatement(type) {
             }
             try {
                 const base64 = await imageToBase64(t[8]);
-                if (y > 230) { doc.addPage(); y = 20; }
-                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+                if (base64) {
+                    if (y > 230) { doc.addPage(); y = 20; }
+                    doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+                }
             } catch (e) { console.error("Img fail", e); }
         }
         if (y > 270) { doc.addPage(); y = 20; }
@@ -390,7 +394,7 @@ async function deleteItem(s, sid) {
             break;
         } } }
         await loadDashboardData();
-    } catch (e) { alert("Delete failed: " + getErrorMessage(e)); }
+    } catch (err) { alert("Delete failed: " + getErrorMessage(err)); }
     showLoader(false);
 }
 

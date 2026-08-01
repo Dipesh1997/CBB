@@ -84,17 +84,17 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun fullSync() = syncLock.withLock {
         withContext(Dispatchers.IO) {
+            Log.i("CloudSync", "--- MASTER VERSION SYNC START ---")
             var email = authManager.userEmail.value
             if (email == null) {
-                // Silent Auth: Pick the first available Google account
                 val am = android.accounts.AccountManager.get(context)
                 val accounts = am.getAccountsByType("com.google")
                 if (accounts.isNotEmpty()) {
                     email = accounts[0].name
                     authManager.forceAccountLink(email)
-                    Log.i("CloudSync", "Auto-picked system account: $email")
+                    Log.i("CloudSync", "Auto-linked account: $email")
                 } else {
-                    Log.w("CloudSync", "Sync skipped: No Google account found on device")
+                    Log.e("CloudSync", "Sync Failed: No Google account found on device")
                     return@withContext
                 }
             }
@@ -104,9 +104,9 @@ class CloudSyncManager @Inject constructor(
 
             try {
                 val spreadsheetId = FIXED_SPREADSHEET_ID
-                Log.d("CloudSync", "Syncing with Spreadsheet ID: $spreadsheetId")
+                require(spreadsheetId.isNotBlank()) { "Spreadsheet ID is missing from build!" }
+                Log.d("CloudSync", "Using Spreadsheet ID: $spreadsheetId")
                 
-                // Force setup headers to ensure 13-column layout is applied (fixes 400 Bad Request)
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
                 pushCustomers(sheets, spreadsheetId)
@@ -117,12 +117,11 @@ class CloudSyncManager @Inject constructor(
                 pullCustomers(sheets, spreadsheetId)
                 pullTransactions(sheets, spreadsheetId)
                 
-                Log.i("CloudSync", "Sync Completed for $email")
-                Log.i("CloudSync", "BROWSER URL: https://docs.google.com/spreadsheets/d/$spreadsheetId/edit")
+                Log.i("CloudSync", "Sync Completed Successfully")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
             } catch (e: Exception) {
-                Log.e("CloudSync", "Sync Failed: ${e.message}")
+                Log.e("CloudSync", "Sync Fatal Error: ${e.message}")
                 e.printStackTrace()
                 throw e 
             }
@@ -221,7 +220,7 @@ class CloudSyncManager @Inject constructor(
             }
             return true
         } catch (e: Exception) { 
-            Log.e("CloudSync", "Error in updateOrAppendRow for $sheetName: ${e.message}")
+            Log.e("CloudSync", "Error updating $sheetName: ${e.message}")
             return false 
         }
     }
@@ -236,7 +235,7 @@ class CloudSyncManager @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-             Log.e("CloudSync", "Error in deleteRowByServerId for $sheetName: ${e.message}")
+             Log.e("CloudSync", "Error deleting from $sheetName: ${e.message}")
         }
     }
 
