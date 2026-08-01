@@ -25,10 +25,10 @@ function generateUUID() {
 
 // Initialize GAPI and GIS
 function gapiLoaded() {
-    gapi.load('client', intializeGapiClient);
+    gapi.load('client', initializeGapiClient);
 }
 
-async function intializeGapiClient() {
+async function initializeGapiClient() {
     await gapi.client.init({
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
     });
@@ -100,6 +100,14 @@ function handleSignOut() {
     }
 }
 
+function getErrorMessage(err) {
+    if (err && err.result && err.result.error && err.result.error.message) {
+        return err.result.error.message;
+    }
+    if (err && err.message) return err.message;
+    return "Unknown Error";
+}
+
 // Data Fetching
 async function loadDashboardData() {
     showLoader(true);
@@ -111,7 +119,7 @@ async function loadDashboardData() {
         });
 
         if (response.result.files.length === 0) {
-            alert("Could not find 'Udaari_Database' spreadsheet in your Google Drive.");
+            alert("Could not find 'Udaari_Database' spreadsheet in your Google Drive. Please ensure the Android app has synced at least once.");
             showLoader(false);
             return;
         }
@@ -135,7 +143,7 @@ async function loadDashboardData() {
         showSection('overview');
     } catch (err) {
         console.error(err);
-        alert("Error fetching data: " + err.message);
+        alert("Error fetching data: " + getErrorMessage(err));
     }
     showLoader(false);
 }
@@ -300,6 +308,10 @@ function findRecord(type, serverId) {
 // Form Submission
 async function handleFormSubmit(e) {
     e.preventDefault();
+    if (!databaseId) {
+        alert("Spreadsheet not loaded. Please sign in or refresh.");
+        return;
+    }
     showLoader(true);
     try {
         if (currentModalType === 'customer') await saveCustomer();
@@ -309,7 +321,8 @@ async function handleFormSubmit(e) {
         await loadDashboardData();
         hideModal();
     } catch (err) {
-        alert("Error saving: " + err.message);
+        console.error(err);
+        alert("Error saving: " + getErrorMessage(err));
     }
     showLoader(false);
 }
@@ -414,6 +427,10 @@ async function updateOrAppendRow(sheetName, serverId, row, serverIdColIndex) {
 
 async function deleteItem(sheetName, serverId) {
     if (!confirm("Are you sure you want to delete this?")) return;
+    if (!databaseId) {
+        alert("Spreadsheet not loaded.");
+        return;
+    }
     showLoader(true);
     try {
         const serverIdColMap = { 'Customers': 8, 'Transactions': 11, 'Catalog': 7 };
@@ -426,42 +443,44 @@ async function deleteItem(sheetName, serverId) {
         const values = response.result.values;
         let rowIndex = -1;
 
-        for (let i = 0; i < values.length; i++) {
-            if (values[i][colIndex] === serverId) {
-                rowIndex = i + 1;
-                const rowData = values[i];
+        if (values) {
+            for (let i = 0; i < values.length; i++) {
+                if (values[i].length > colIndex && values[i][colIndex] === serverId) {
+                    rowIndex = i + 1;
+                    const rowData = values[i];
 
-                // 1. Move to Trash
-                const trashRow = [
-                    `${sheetName} record deleted from Web`,
-                    sheetName.toLowerCase(),
-                    serverId,
-                    Date.now().toString(),
-                    JSON.stringify(rowData)
-                ];
-                await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: databaseId,
-                    range: 'Trash!A1',
-                    valueInputOption: 'USER_ENTERED',
-                    resource: { values: [trashRow] }
-                });
+                    // 1. Move to Trash
+                    const trashRow = [
+                        `${sheetName} record deleted from Web`,
+                        sheetName.toLowerCase(),
+                        serverId,
+                        Date.now().toString(),
+                        JSON.stringify(rowData)
+                    ];
+                    await gapi.client.sheets.spreadsheets.values.append({
+                        spreadsheetId: databaseId,
+                        range: 'Trash!A1',
+                        valueInputOption: 'USER_ENTERED',
+                        resource: { values: [trashRow] }
+                    });
 
-                // 2. Clear from main sheet
-                await gapi.client.sheets.spreadsheets.values.clear({
-                    spreadsheetId: databaseId,
-                    range: `${sheetName}!A${rowIndex}:Z${rowIndex}`
-                });
+                    // 2. Clear from main sheet
+                    await gapi.client.sheets.spreadsheets.values.clear({
+                        spreadsheetId: databaseId,
+                        range: `${sheetName}!A${rowIndex}:Z${rowIndex}`
+                    });
 
-                // 3. If transaction, update balance
-                if (sheetName === 'Transactions') {
-                    await updateCustomerBalance(rowData[1]);
+                    // 3. If transaction, update balance
+                    if (sheetName === 'Transactions') {
+                        await updateCustomerBalance(rowData[1]);
+                    }
+                    break;
                 }
-                break;
             }
         }
         await loadDashboardData();
     } catch (err) {
-        alert("Delete failed: " + err.message);
+        alert("Delete failed: " + getErrorMessage(err));
     }
     showLoader(false);
 }
