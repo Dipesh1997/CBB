@@ -13,19 +13,26 @@ object GoogleSheetsHelper {
     private const val BILL_ITEMS_SHEET = "BillItems"
 
     fun setupSheets(sheets: Sheets, spreadsheetId: String) {
-        val spreadsheet = sheets.spreadsheets().get(spreadsheetId).execute()
-        val existingTitles = spreadsheet.sheets.map { it.properties.title }
+        try {
+            android.util.Log.d("GoogleSheets", "Setting up sheets for ID: $spreadsheetId")
+            val spreadsheet = sheets.spreadsheets().get(spreadsheetId).execute()
+            val existingTitles = spreadsheet.sheets.map { it.properties.title }
 
-        val requests = mutableListOf<Request>()
-        if (!existingTitles.contains(CUSTOMERS_SHEET)) requests.add(addSheetRequest(CUSTOMERS_SHEET))
-        if (!existingTitles.contains(TRANSACTIONS_SHEET)) requests.add(addSheetRequest(TRANSACTIONS_SHEET))
-        if (!existingTitles.contains(HISTORY_SHEET)) requests.add(addSheetRequest(HISTORY_SHEET))
-        if (!existingTitles.contains(TRASH_SHEET)) requests.add(addSheetRequest(TRASH_SHEET))
+            val requests = mutableListOf<Request>()
+            if (!existingTitles.contains(CUSTOMERS_SHEET)) requests.add(addSheetRequest(CUSTOMERS_SHEET))
+            if (!existingTitles.contains(TRANSACTIONS_SHEET)) requests.add(addSheetRequest(TRANSACTIONS_SHEET))
+            if (!existingTitles.contains(HISTORY_SHEET)) requests.add(addSheetRequest(HISTORY_SHEET))
+            if (!existingTitles.contains(TRASH_SHEET)) requests.add(addSheetRequest(TRASH_SHEET))
 
-        if (requests.isNotEmpty()) {
-            sheets.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(requests)).execute()
-            // Add Headers
+            if (requests.isNotEmpty()) {
+                sheets.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(requests)).execute()
+            }
+            
+            // Always verify and write headers to ensure 13-column schema (fixes 400 Bad Request)
             writeHeaders(sheets, spreadsheetId)
+        } catch (e: Exception) {
+            android.util.Log.e("GoogleSheets", "Critical Header Setup Failure: ${e.message}")
+            throw Exception("Failed to connect to Spreadsheet: ${e.message}. Ensure ID is valid.")
         }
     }
 

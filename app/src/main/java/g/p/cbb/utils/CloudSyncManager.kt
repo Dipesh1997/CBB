@@ -15,7 +15,6 @@ import com.google.api.services.sheets.v4.model.ValueRange
 import dagger.hilt.android.qualifiers.ApplicationContext
 import g.p.cbb.data.dao.*
 import g.p.cbb.data.entity.*
-import g.p.cbb.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,11 +28,14 @@ class CloudSyncManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val customerDao: CustomerDao,
     private val transactionDao: TransactionDao,
-    private val settings: SettingsRepository,
     private val authManager: GoogleAuthManager,
     private val tombstoneDao: TombstoneDao,
     private val activityLogDao: ActivityLogDao
 ) {
+    companion object {
+        private const val FIXED_SPREADSHEET_ID = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
+    }
+
     private val transport = NetHttpTransport()
     private val jsonFactory = GsonFactory.getDefaultInstance()
     private val syncLock = Mutex()
@@ -101,12 +103,9 @@ class CloudSyncManager @Inject constructor(
             val drive = getDriveService(email)
 
             try {
-                var spreadsheetId = settings.getSpreadsheetId()
-                if (spreadsheetId == null) {
-                    spreadsheetId = findOrCreateSpreadsheet(drive, sheets)
-                    settings.saveSpreadsheetId(spreadsheetId)
-                }
-
+                val spreadsheetId = FIXED_SPREADSHEET_ID
+                Log.d("CloudSync", "Syncing with Spreadsheet ID: $spreadsheetId")
+                
                 // Force setup headers to ensure 13-column layout is applied (fixes 400 Bad Request)
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
@@ -124,6 +123,7 @@ class CloudSyncManager @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e("CloudSync", "Sync Failed: ${e.message}")
+                e.printStackTrace()
                 throw e 
             }
         }
@@ -208,7 +208,7 @@ class CloudSyncManager @Inject constructor(
             var rowIndex = -1
             if (values != null) {
                 for (i in values.indices) {
-                    if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString() == serverId) {
+                    if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == serverId.trim()) {
                         rowIndex = i + 1
                         break
                     }
@@ -220,26 +220,31 @@ class CloudSyncManager @Inject constructor(
                 sheets.spreadsheets().values().append(spreadsheetId, "$sheetName!A1", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
             }
             return true
-        } catch (e: Exception) { return false }
+        } catch (e: Exception) { 
+            Log.e("CloudSync", "Error in updateOrAppendRow for $sheetName: ${e.message}")
+            return false 
+        }
     }
 
     private suspend fun deleteRowByServerId(sheets: Sheets, spreadsheetId: String, sheetName: String, serverId: String, serverIdColIndex: Int) {
         try {
             val values = sheets.spreadsheets().values().get(spreadsheetId, "$sheetName!A:Z").execute().getValues() ?: return
             for (i in values.indices) {
-                if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString() == serverId) {
+                if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == serverId.trim()) {
                     sheets.spreadsheets().values().clear(spreadsheetId, "$sheetName!A${i+1}:Z${i+1}", com.google.api.services.sheets.v4.model.ClearValuesRequest()).execute()
                     break
                 }
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+             Log.e("CloudSync", "Error in deleteRowByServerId for $sheetName: ${e.message}")
+        }
     }
 
     private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String) {
         val rows = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A2:I").execute().getValues() ?: return
         rows.forEach { row ->
             if (row.size < 9) return@forEach
-            val sid = row[8].toString()
+            val sid = row[8].toString().trim()
             val last = row[7].toString().toLongOrNull() ?: 0L
             val local = customerDao.getCustomerByServerId(sid)
             if (local == null || last > local.lastUpdated) {
@@ -252,9 +257,9 @@ class CloudSyncManager @Inject constructor(
         val rows = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:M").execute().getValues() ?: return
         rows.forEach { row ->
             if (row.size < 13) return@forEach
-            val sid = row[12].toString()
+            val sid = row[12].toString().trim()
             val last = row[11].toString().toLongOrNull() ?: 0L
-            val cid = row[1].toString()
+            val cid = row[1].toString().trim()
             val cust = customerDao.getCustomerByServerId(cid) ?: return@forEach
             val local = transactionDao.getTransactionByServerId(sid)
             if (local == null || last > local.lastUpdated) {
@@ -263,14 +268,8 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    private fun findOrCreateSpreadsheet(drive: Drive, sheets: Sheets): String {
-        val files = drive.files().list().setQ("name = 'Udaari_Database' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false").execute()
-        if (files.files != null && files.files.isNotEmpty()) return files.files[0].id
-        return sheets.spreadsheets().create(com.google.api.services.sheets.v4.model.Spreadsheet().setProperties(com.google.api.services.sheets.v4.model.SpreadsheetProperties().setTitle("Udaari_Database"))).execute().spreadsheetId
-    }
-
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
-        val spreadsheetId = settings.getSpreadsheetId() ?: return@withContext
+        val spreadsheetId = FIXED_SPREADSHEET_ID
         val drive = getDriveService(authManager.userEmail.value ?: return@withContext)
         GoogleDriveHelper.shareWithUser(drive, spreadsheetId, email)
     }
