@@ -84,10 +84,23 @@ class CloudSyncManager @Inject constructor(
 
     suspend fun fullSync() = syncLock.withLock {
         withContext(Dispatchers.IO) {
-            val email = authManager.userEmail.value ?: return@withContext
+            var email = authManager.userEmail.value
+            if (email == null) {
+                // Silent Auth: Pick the first available Google account
+                val am = android.accounts.AccountManager.get(context)
+                val accounts = am.getAccountsByType("com.google")
+                if (accounts.isNotEmpty()) {
+                    email = accounts[0].name
+                    authManager.forceAccountLink(email!!)
+                    Log.i("CloudSync", "Auto-picked system account: $email")
+                } else {
+                    Log.w("CloudSync", "Sync skipped: No Google account found on device")
+                    return@withContext
+                }
+            }
             
-            val sheets = getSheetsService(email)
-            val drive = getDriveService(email)
+            val sheets = getSheetsService(email!!)
+            val drive = getDriveService(email!!)
 
             try {
                 var spreadsheetId = settings.getSpreadsheetId()

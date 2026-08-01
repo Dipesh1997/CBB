@@ -10,6 +10,7 @@ import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import dagger.hilt.android.qualifiers.ApplicationContext
+import g.p.cbb.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -17,17 +18,26 @@ import javax.inject.Singleton
 
 @Singleton
 class GoogleAuthManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val settings: SettingsRepository
 ) {
     private val credentialManager = CredentialManager.create(context)
     
-    private val _userEmail = MutableStateFlow<String?>(null)
+    private val _userEmail = MutableStateFlow<String?>(settings.getUserEmail())
     val userEmail = _userEmail.asStateFlow()
 
-    private val _userName = MutableStateFlow<String?>(null)
+    private val _userName = MutableStateFlow<String?>(settings.getUserName())
     val userName = _userName.asStateFlow()
 
     fun isUserSignedIn(): Boolean = _userEmail.value != null
+
+    fun forceAccountLink(email: String) {
+        _userEmail.value = email
+        _userName.value = email.split("@")[0]
+        settings.saveUserEmail(email)
+        settings.saveUserName(_userName.value)
+        Log.d("GoogleAuth", "Silent account linked: $email")
+    }
 
     suspend fun signIn(activityContext: Context): Boolean {
         val activity = activityContext.findActivity() ?: run {
@@ -58,6 +68,8 @@ class GoogleAuthManager @Inject constructor(
                     Log.d("GoogleAuth", "Sign-in Success: ${credential.id}")
                     _userEmail.value = credential.id
                     _userName.value = credential.displayName
+                    settings.saveUserEmail(credential.id)
+                    settings.saveUserName(credential.displayName)
                     true
                 }
                 else -> {
@@ -67,6 +79,8 @@ class GoogleAuthManager @Inject constructor(
                         Log.d("GoogleAuth", "Sign-in Success (via data): ${googleIdTokenCredential.id}")
                         _userEmail.value = googleIdTokenCredential.id
                         _userName.value = googleIdTokenCredential.displayName
+                        settings.saveUserEmail(googleIdTokenCredential.id)
+                        settings.saveUserName(googleIdTokenCredential.displayName)
                         true
                     } catch (e: Exception) {
                         Log.e("GoogleAuth", "Unexpected credential type: ${credential.type}")
@@ -112,5 +126,7 @@ class GoogleAuthManager @Inject constructor(
         credentialManager.clearCredentialState(ClearCredentialStateRequest())
         _userEmail.value = null
         _userName.value = null
+        settings.saveUserEmail(null)
+        settings.saveUserName(null)
     }
 }
