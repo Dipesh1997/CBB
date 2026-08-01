@@ -89,9 +89,7 @@ function renderAll() {
         const tr = document.createElement('tr');
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
-
         const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
-
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
@@ -115,9 +113,7 @@ function showCustomerLedger(sid) {
         const tr = document.createElement('tr');
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
-
         const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
-
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="event.stopPropagation(); recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="event.stopPropagation(); showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="event.stopPropagation(); shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="event.stopPropagation(); deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
     });
@@ -140,15 +136,10 @@ function showModal(type, id = null) {
         fields.innerHTML = `<div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div><div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div><div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
         document.getElementById('modal-title').textContent = data ? 'Edit Transaction' : (currentParentId ? 'Record Part Payment' : 'Add Transaction');
-
         let pc = '';
         if (data) pc = data[1];
-        else if (currentParentId) {
-            const parent = appData.transactions.find(t => t[12] === currentParentId);
-            pc = parent ? parent[1] : '';
-        } else if (document.getElementById('customer-ledger').classList.contains('active')) {
-            pc = activeCustomerId;
-        }
+        else if (currentParentId) { const p = appData.transactions.find(t => t[12] === currentParentId); pc = p ? p[1] : ''; }
+        else if (document.getElementById('customer-ledger').classList.contains('active')) pc = activeCustomerId;
 
         const opts = appData.customers.map(c => `<option value="${c[8]}" ${c[8] === pc ? 'selected' : ''}>${c[1]}</option>`).join('');
         const dVal = data ? new Date(parseInt(data[4])).toISOString().split('T')[0] : dateStr;
@@ -177,70 +168,38 @@ function showModal(type, id = null) {
 }
 
 function showTransactionDetails(tid) {
-    const tx = appData.transactions.find(t => t[12] === tid);
-    if (!tx) return;
+    const tx = appData.transactions.find(t => t[12] === tid); if (!tx) return;
     const cust = appData.customers.find(c => c[8] === tx[1]);
-    const overlay = document.getElementById('details-modal-overlay');
-    const content = document.getElementById('details-content');
-
     const linked = appData.transactions.filter(t => t[9] === tid);
     const linkedRows = linked.map(l => `<tr><td>${new Date(parseInt(l[4])).toLocaleDateString()}</td><td>₹ ${l[2]}</td><td>${l[5] || ''}</td></tr>`).join('');
-
-    content.innerHTML = `
-        <div class="detail-header">
-            <span class="detail-amount" style="color:${tx[3]==='DEBIT'?'red':'green'}">₹ ${tx[2]}</span>
-            <span class="chip">${tx[3]}</span>
-        </div>
-        <div class="detail-meta">
-            <div><span class="label">Customer</span><span class="value">${cust?cust[1]:'Unknown'}</span></div>
-            <div><span class="label">Date</span><span class="value">${new Date(parseInt(tx[4])).toLocaleString()}</span></div>
-        </div>
+    document.getElementById('details-content').innerHTML = `
+        <div class="detail-header"><span class="detail-amount" style="color:${tx[3]==='DEBIT'?'red':'green'}">₹ ${tx[2]}</span><span class="chip">${tx[3]}</span></div>
+        <div class="detail-meta"><div><span class="label">Customer</span><span class="value">${cust?cust[1]:'Unknown'}</span></div><div><span class="label">Date</span><span class="value">${new Date(parseInt(tx[4])).toLocaleString()}</span></div></div>
         ${tx[5] ? `<div class="detail-note">"${tx[5]}"</div>` : ''}
         ${tx[8] ? `<img src="https://drive.google.com/thumbnail?id=${tx[8]}&sz=w1000" style="width:100%; border-radius:12px; cursor:pointer;" onclick="viewFullscreen('${tx[8]}')">` : ''}
-        ${linked.length > 0 ? `
-            <div class="linked-payments">
-                <h4>Linked Part Payments</h4>
-                <table class="mini-table"><thead><tr><th>Date</th><th>Amount</th><th>Note</th></tr></thead><tbody>${linkedRows}</tbody></table>
-            </div>` : ''}
-    `;
-
+        ${linked.length > 0 ? `<div class="linked-payments"><h4>Linked Part Payments</h4><table class="mini-table"><thead><tr><th>Date</th><th>Amount</th><th>Note</th></tr></thead><tbody>${linkedRows}</tbody></table></div>` : ''}`;
     document.getElementById('details-edit-btn').onclick = () => { hideDetailsModal(); showModal('transaction', tid); };
     document.getElementById('details-share-btn').onclick = () => shareTransaction(tid);
-    overlay.style.display = 'flex';
+    document.getElementById('details-modal-overlay').style.display = 'flex';
 }
 
 function hideDetailsModal() { document.getElementById('details-modal-overlay').style.display = 'none'; }
+function recordPartPayment(billId) { currentParentId = billId; const b = appData.transactions.find(t => t[12] === billId); showModal('transaction', b[1]); }
 
-function recordPartPayment(billId) {
-    currentParentId = billId;
-    const bill = appData.transactions.find(t => t[12] === billId);
-    showModal('transaction', bill[1]);
-}
-
-function previewImage(i) {
-    const r = new FileReader(); r.onload = (e) => {
-        const preview = document.getElementById('img-preview');
-        preview.src = e.target.result;
+async function previewImage(i) {
+    const f = i.files[0]; if (!f) return;
+    const compressed = await compressImage(f, 1200, 0.7);
+    const reader = new FileReader(); reader.onload = (e) => {
+        const p = document.getElementById('img-preview'); p.src = e.target.result;
         document.getElementById('image-preview-container').style.display = 'block';
-
-        preview.onclick = () => {
-            document.getElementById('fs-img').src = e.target.result;
-            document.getElementById('fs-viewer').style.display = 'flex';
-        };
-
-        const existingData = currentEditId ? findRecord('transaction', currentEditId) : null;
-        if (existingData && existingData[8]) document.getElementById('confirm-replace-text').style.display = 'block';
+        p.onclick = () => { document.getElementById('fs-img').src = e.target.result; document.getElementById('fs-viewer').style.display = 'flex'; };
+        const ext = currentEditId ? findRecord('transaction', currentEditId) : null;
+        if (ext && ext[8]) document.getElementById('confirm-replace-text').style.display = 'block';
     };
-    if (i.files[0]) r.readAsDataURL(i.files[0]);
+    reader.readAsDataURL(compressed);
 }
 
-function viewFullscreenFromPreview() {
-    const src = document.getElementById('img-preview').src;
-    if (src) {
-        document.getElementById('fs-img').src = src;
-        document.getElementById('fs-viewer').style.display = 'flex';
-    }
-}
+function viewFullscreenFromPreview() { const s = document.getElementById('img-preview').src; if (s) { document.getElementById('fs-img').src = s; document.getElementById('fs-viewer').style.display = 'flex'; } }
 
 async function handleFormSubmit(e) {
     e.preventDefault(); if (!databaseId) return;
@@ -249,26 +208,30 @@ async function handleFormSubmit(e) {
         if (currentModalType === 'customer') await saveCustomer();
         else if (currentModalType === 'transaction') await saveTransaction();
         await loadDashboardData();
-        hideModal();
-        currentParentId = null;
+        hideModal(); currentParentId = null;
     } catch (err) { alert("Error: " + getErrorMessage(err)); }
     showLoader(false);
 }
 
 async function saveCustomer() {
-    const name = document.getElementById('cust-name').value, phone = document.getElementById('cust-phone').value, addr = document.getElementById('cust-address').value;
+    const n = document.getElementById('cust-name').value, p = document.getElementById('cust-phone').value, a = document.getElementById('cust-address').value;
     const sid = currentEditId || generateUUID(), ext = findRecord('customer', currentEditId);
-    const row = [ ext ? ext[0] : '0', name, phone, addr, ext ? ext[4] : '0.0', ext ? ext[5] : 'FALSE', ext ? ext[6] : 'web-user', Date.now().toString(), sid ];
+    const row = [ ext ? ext[0] : '0', n, p, a, ext ? ext[4] : '0.0', ext ? ext[5] : 'FALSE', ext ? ext[6] : 'web-user', Date.now().toString(), sid ];
     await updateOrAppendRow('Customers', sid, row, 8);
-    await logHistory(`${ext ? 'Updated' : 'Added'} Customer: ${name}`);
+    await logHistory(`${ext ? 'Updated' : 'Added'} Customer: ${n}`);
 }
 
 async function saveTransaction() {
-    const cid = document.getElementById('tx-cust').value, amt = document.getElementById('tx-amount').value, type = document.getElementById('tx-type').value, note = document.getElementById('tx-note').value, file = document.getElementById('tx-photo').files[0];
+    const cid = document.getElementById('tx-cust').value, amt = document.getElementById('tx-amount').value, type = document.getElementById('tx-type').value, note = document.getElementById('tx-note').value, f = document.getElementById('tx-photo').files[0];
     const ts = new Date(`${document.getElementById('tx-date').value}T${document.getElementById('tx-time').value}`).getTime();
     const ext = findRecord('transaction', currentEditId), sid = ext ? currentEditId : generateUUID();
     let did = ext ? ext[8] : '', prev = ext ? ext[6] : '', view = ext ? ext[7] : '';
-    if (file) { did = await uploadToDrive(file); prev = `=IMAGE("https://drive.google.com/thumbnail?id=${did}")`; view = `=HYPERLINK("https://drive.google.com/file/d/${did}/view", "View")`; }
+    if (f) {
+        const comp = await compressImage(f, 1200, 0.7);
+        did = await uploadToDrive(comp);
+        prev = `=IMAGE("https://drive.google.com/thumbnail?id=${did}")`;
+        view = `=HYPERLINK("https://drive.google.com/file/d/${did}/view", "View")`;
+    }
     const row = [ ext ? ext[0] : '0', cid, amt, type, ts.toString(), note, prev, view, did, currentParentId || (ext ? ext[9] : ''), ext ? ext[10] : 'web-user', Date.now().toString(), sid ];
     await updateOrAppendRow('Transactions', sid, row, 12);
     await updateCustomerBalance(cid);
@@ -277,10 +240,82 @@ async function saveTransaction() {
     return sid;
 }
 
-async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
+async function compressImage(f, mw, q) {
+    return new Promise((res) => {
+        const r = new FileReader(); r.readAsDataURL(f);
+        r.onload = (e) => {
+            const img = new Image(); img.src = e.target.result;
+            img.onload = () => {
+                const can = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > mw) { h *= mw / w; w = mw; }
+                can.width = w; can.height = h;
+                const ctx = can.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+                can.toBlob((b) => res(b), 'image/jpeg', q);
+            };
+        };
+    });
+}
+
+async function imageToBase64(did) {
+    const r = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`, { headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token } });
+    const b = await r.blob();
+    return new Promise((res) => { const reader = new FileReader(); reader.onloadend = () => res(reader.result); reader.readAsDataURL(b); });
+}
+
+async function exportStatement(type) {
+    const sid = activeCustomerId, cust = appData.customers.find(c => c[8] === sid);
+    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
+    if (type === 'range') {
+        const start = new Date(document.getElementById('export-start-date').value).getTime(), end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
+        if (!start || !end) { alert("Select range"); return; }
+        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
+    }
+    const filteredWithImages = txs.filter(t => (t[8] || '').trim() !== '');
+    const showProgress = filteredWithImages.length > 10;
+    if (showProgress) {
+        document.getElementById('pdf-progress-container').style.display = 'block';
+        document.getElementById('loader-text').textContent = "Generating Statement...";
+        showLoader(true);
+    }
+    const { jsPDF } = window.jspdf; const doc = new jsPDF();
+    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
+    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
+    doc.line(14, 30, 196, 30); doc.text(`Customer: ${cust[1]}`, 14, 40); doc.text(`Phone: ${cust[2]}`, 14, 46); doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
+    let y = 60;
+    for (let i = 0; i < txs.length; i++) {
+        const t = txs[i]; const linked = appData.transactions.filter(x => x[9] === t[12]);
+        const head = [['Date', 'Type', 'Amount', 'Note']];
+        const body = [[new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']];
+        doc.autoTable({ startY: y, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
+        y = doc.lastAutoTable.finalY + 5;
+        if (linked.length > 0) {
+            doc.setFontSize(9); doc.text("Part Payments Received:", 20, y); y += 5;
+            const lRows = linked.map(l => [new Date(parseInt(l[4])).toLocaleDateString(), `Rs. ${l[2]}`, l[5] || '']);
+            doc.autoTable({ startY: y, head: [['Date', 'Amount', 'Note']], body: lRows, theme: 'plain', margin: { left: 20 } });
+            y = doc.lastAutoTable.finalY + 10;
+        }
+        if ((type === 'full' || type === 'range') && (t[8] || '').trim() !== '') {
+            if (showProgress) {
+                const idx = filteredWithImages.indexOf(t);
+                const prog = Math.round((idx + 1) / filteredWithImages.length * 100);
+                document.getElementById('pdf-progress-bar').style.width = prog + '%';
+                document.getElementById('pdf-progress-text').textContent = `Processing images (${idx + 1}/${filteredWithImages.length})...`;
+            }
+            try {
+                const base64 = await imageToBase64(t[8]);
+                if (y > 230) { doc.addPage(); y = 20; }
+                doc.addImage(base64, 'JPEG', 14, y, 50, 50); y += 60;
+            } catch (e) { console.error("Img fail", e); }
+        }
+        if (y > 270) { doc.addPage(); y = 20; }
+    }
+    doc.save(`Statement_${cust[1]}.pdf`);
+    hideExportModal(); showLoader(false); document.getElementById('pdf-progress-container').style.display = 'none';
+}
 
 async function uploadToDrive(f) {
-    const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: f.type };
+    const m = { name: `Udaari_${Date.now()}_${f.name}`, mimeType: 'image/jpeg' };
     const fd = new FormData();
     fd.append('metadata', new Blob([JSON.stringify(m)], { type: 'application/json' }));
     fd.append('file', f);
@@ -289,6 +324,8 @@ async function uploadToDrive(f) {
     if (!r.ok) throw new Error(res.error?.message || 'Upload Failed');
     return res.id;
 }
+
+async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE', generateUUID() ]; await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: 'History!A1', valueInputOption: 'USER_ENTERED', resource: { values: [r] } }); }
 
 async function updateOrAppendRow(s, sid, r, c) {
     const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
@@ -333,19 +370,7 @@ function shareTransaction(sid) {
     const received = linked.reduce((acc, l) => acc + parseFloat(l[2] || 0), 0);
     const remaining = parseFloat(tx[2]) - received;
 
-    let txt = `
-📜 *Udaari Ledger Bill*
-----------------------------
-👤 *Customer:* ${c[1]}
-💰 *Total Bill:* ₹${tx[2]}
-📅 *Date:* ${new Date(parseInt(tx[4])).toLocaleDateString()}
-📄 *Note:* ${tx[5] || 'N/A'}
-----------------------------
-📥 *Received:* ₹${received}
-⌛ *Remaining:* ₹${remaining.toFixed(2)}
-----------------------------
-Generated via Udaari Ledger Web`.trim();
-
+    let txt = `📜 Udaari Ledger Bill\nCustomer: ${c[1]}\nTotal Bill: ₹${tx[2]}\nDate: ${new Date(parseInt(tx[4])).toLocaleDateString()}\nNote: ${tx[5] || 'N/A'}\nReceived: ₹${received}\nRemaining: ₹${remaining.toFixed(2)}`;
     if (navigator.share) navigator.share({ title: 'Bill', text: txt }); else { navigator.clipboard.writeText(txt); alert("Copied!"); }
 }
 
@@ -357,37 +382,5 @@ function viewFullscreen(did) {
 function showLoader(s) { document.getElementById('loader').style.display = s ? 'flex' : 'none'; }
 function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 function findRecord(t, id) { if (t === 'customer') return appData.customers.find(c => c[8] === id); if (t === 'transaction') return appData.transactions.find(x => x[12] === id); return null; }
-
 function showExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; }
 function hideExportModal() { document.getElementById('export-modal-overlay').style.display = 'none'; }
-
-async function exportStatement(type) {
-    const sid = activeCustomerId;
-    const cust = appData.customers.find(c => c[8] === sid);
-    let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
-
-    if (type === 'range') {
-        const startStr = document.getElementById('export-start-date').value;
-        const endStr = document.getElementById('export-end-date').value;
-        if (!startStr || !endStr) { alert("Select date range"); return; }
-        const start = new Date(startStr).getTime();
-        const end = new Date(endStr).getTime() + 86400000;
-        txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(22); doc.text("Customer Statement", 14, 20);
-    doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
-    doc.line(14, 30, 196, 30);
-    doc.text(`Customer: ${cust[1]}`, 14, 40);
-    doc.text(`Phone: ${cust[2]}`, 14, 46);
-    doc.text(`Balance: Rs. ${cust[4]}`, 14, 52);
-
-    let head = [['Date', 'Type', 'Amount', 'Note']];
-    let body = txs.map(t => [new Date(parseInt(t[4])).toLocaleDateString(), t[3], `Rs. ${t[2]}`, t[5] || '']);
-
-    doc.autoTable({ startY: 60, head: head, body: body, theme: 'grid', headStyles: { fillColor: [103, 80, 164] } });
-    doc.save(`Statement_${cust[1]}.pdf`);
-    hideExportModal();
-}

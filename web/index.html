@@ -166,7 +166,18 @@
         <span class="material-icons close-fs">close</span>
     </div>
 
-    <div id="loader"><div style="text-align: center;"><div class="material-icons" style="font-size: 48px; animation: spin 2s linear infinite;">refresh</div><p>Syncing...</p></div></div>
+    <div id="loader">
+        <div style="text-align: center; width: 80%; max-width: 400px;">
+            <div class="material-icons" style="font-size: 48px; animation: spin 2s linear infinite; margin-bottom: 16px;">refresh</div>
+            <p id="loader-text">Syncing...</p>
+            <div id="pdf-progress-container" style="display: none; margin-top: 24px;">
+                <div style="height: 8px; background: var(--surface-variant); border-radius: 4px; overflow: hidden;">
+                    <div id="pdf-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+                </div>
+                <p id="pdf-progress-text" style="font-size: 12px; margin-top: 8px; color: var(--on-surface-variant);">Processing images (0/0)...</p>
+            </div>
+        </div>
+    </div>
 
     <button id="global-fab" class="fab fixed-fab" style="display: none;"><span class="material-icons" id="fab-icon">add</span></button>
 
