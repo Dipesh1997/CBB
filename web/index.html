@@ -147,10 +147,13 @@
                         <span class="material-icons action-icon" onclick="showSection('customers')">arrow_back</span>
                         <h2 id="ledger-title">Customer Ledger</h2>
                     </div>
-                    <button class="btn-primary" id="export-pdf-btn">
-                        <span class="material-icons" style="font-size: 18px; vertical-align: middle; margin-right: 4px;">picture_as_pdf</span>
-                        Export PDF
-                    </button>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <button class="btn-primary" id="export-pdf-btn">
+                            <span class="material-icons" style="font-size: 18px; vertical-align: middle; margin-right: 4px;">picture_as_pdf</span>
+                            Export PDF
+                        </button>
+                        <button class="fab" id="ledger-add-tx-btn"><span class="material-icons">add</span></button>
+                    </div>
                 </div>
 
                 <div id="ledger-customer-info" class="card" style="margin-bottom: 24px;">

@@ -220,6 +220,7 @@ function showCustomerLedger(serverId) {
     `;
 
     document.getElementById('export-pdf-btn').onclick = () => exportCustomerPdf(serverId);
+    document.getElementById('ledger-add-tx-btn').onclick = () => showModal('transaction', serverId);
     renderCustomerLedger(serverId);
 }
 
@@ -228,8 +229,17 @@ function renderCustomerLedger(serverId) {
     tbody.innerHTML = '';
 
     const transactions = appData.transactions
-        .filter(tx => tx[1] === serverId)
-        .sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
+        .filter(tx => tx[1] && tx[1].trim() === serverId.trim())
+        .sort((a, b) => {
+            const timeA = parseInt(a[4]) || 0;
+            const timeB = parseInt(b[4]) || 0;
+            return timeB - timeA;
+        });
+
+    if (transactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px;">No transactions found for this customer.</td></tr>';
+        return;
+    }
 
     transactions.forEach(row => {
         const tr = document.createElement('tr');
@@ -364,7 +374,9 @@ function showModal(type, serverId = null) {
         `;
     } else if (type === 'transaction') {
         title.textContent = 'Add Transaction';
-        const customerOptions = appData.customers.map(c => `<option value="${c[8]}">${c[1]}</option>`).join('');
+        const customerOptions = appData.customers.map(c =>
+            `<option value="${c[8]}" ${c[8] === serverId ? 'selected' : ''}>${c[1]}</option>`
+        ).join('');
         fields.innerHTML = `
             <div class="form-group"><label>Customer</label><select id="tx-cust" required>${customerOptions}</select></div>
             <div class="form-group"><label>Amount</label><input type="number" id="tx-amount" step="0.01" required></div>
