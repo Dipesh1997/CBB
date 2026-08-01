@@ -23,6 +23,7 @@ function handleCredentialResponse(response) {
     const payload = decodeJwt(response.credential);
     document.getElementById('welcome-screen').style.display = 'none';
     document.getElementById('user-profile').style.display = 'block';
+    if (document.querySelector('.g_id_signin')) document.querySelector('.g_id_signin').style.display = 'none';
     document.getElementById('sidebar').style.display = 'flex';
     document.getElementById('user-name').textContent = payload.name;
     document.getElementById('user-pic').src = payload.picture;
@@ -89,8 +90,7 @@ function renderAll() {
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
 
-        // Use thumbnail link for performance and stability
-        const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w100` : '';
+        const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
 
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${cust ? cust[1] : 'Unknown'}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[3]}</td><td>${r[5] || ''}</td><td style="text-align:right;"><span class="material-icons action-icon" onclick="showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
@@ -116,7 +116,7 @@ function showCustomerLedger(sid) {
         tr.className = 'clickable-row';
         tr.onclick = (e) => { if (!e.target.classList.contains('material-icons') && !e.target.classList.contains('thumbnail')) showTransactionDetails(tid); };
 
-        const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w100` : '';
+        const thumbUrl = did ? `https://drive.google.com/thumbnail?id=${did}&sz=w200` : '';
 
         tr.innerHTML = `<td>${new Date(parseInt(r[4])).toLocaleDateString()}</td><td>${r[3]}</td><td style="color:${r[3] === 'DEBIT' ? 'red' : 'green'}">₹ ${r[2]}</td><td>${r[5] || ''}</td><td style="text-align:right;">${r[3] === 'DEBIT' ? `<span class="material-icons action-icon pay" title="Record Payment" onclick="event.stopPropagation(); recordPartPayment('${tid}')">payments</span>` : ''}<span class="material-icons action-icon" onclick="event.stopPropagation(); showModal('transaction', '${tid}')">edit</span><span class="material-icons action-icon" onclick="event.stopPropagation(); shareTransaction('${tid}')">share</span>${did ? `<img src="${thumbUrl}" class="thumbnail" onclick="event.stopPropagation(); viewFullscreen('${did}')" alt="Receipt">` : ''}<span class="material-icons action-icon delete" onclick="event.stopPropagation(); deleteItem('Transactions', '${tid}')">delete</span></td>`;
         tbody.appendChild(tr);
@@ -169,7 +169,7 @@ function showModal(type, id = null) {
             <div class="form-group"><label>Attach Photo (Optional)</label><input type="file" id="tx-photo" accept="image/*" onchange="previewImage(this)"></div>`;
 
         if (data && data[8]) {
-            document.getElementById('img-preview').src = `https://drive.google.com/uc?id=${data[8]}`;
+            document.getElementById('img-preview').src = `https://drive.google.com/thumbnail?id=${data[8]}&sz=w200`;
             document.getElementById('image-preview-container').style.display = 'block';
         }
     }
@@ -196,7 +196,7 @@ function showTransactionDetails(tid) {
             <div><span class="label">Date</span><span class="value">${new Date(parseInt(tx[4])).toLocaleString()}</span></div>
         </div>
         ${tx[5] ? `<div class="detail-note">"${tx[5]}"</div>` : ''}
-        ${tx[8] ? `<img src="https://drive.google.com/uc?id=${tx[8]}" style="width:100%; border-radius:12px; cursor:pointer;" onclick="viewFullscreen('${tx[8]}')">` : ''}
+        ${tx[8] ? `<img src="https://drive.google.com/thumbnail?id=${tx[8]}&sz=w1000" style="width:100%; border-radius:12px; cursor:pointer;" onclick="viewFullscreen('${tx[8]}')">` : ''}
         ${linked.length > 0 ? `
             <div class="linked-payments">
                 <h4>Linked Part Payments</h4>
@@ -223,7 +223,6 @@ function previewImage(i) {
         preview.src = e.target.result;
         document.getElementById('image-preview-container').style.display = 'block';
 
-        // Ensure preview is clickable for fullscreen
         preview.onclick = () => {
             document.getElementById('fs-img').src = e.target.result;
             document.getElementById('fs-viewer').style.display = 'flex';
@@ -351,7 +350,6 @@ Generated via Udaari Ledger Web`.trim();
 }
 
 function viewFullscreen(did) {
-    // sz=w2000 for high resolution fullscreen
     document.getElementById('fs-img').src = `https://drive.google.com/thumbnail?id=${did}&sz=w2000`;
     document.getElementById('fs-viewer').style.display = 'flex';
 }
@@ -369,9 +367,11 @@ async function exportStatement(type) {
     let txs = appData.transactions.filter(t => t[1] === sid).sort((a, b) => parseInt(a[4]) - parseInt(b[4]));
 
     if (type === 'range') {
-        const start = new Date(document.getElementById('export-start-date').value).getTime();
-        const end = new Date(document.getElementById('export-end-date').value).getTime() + 86400000;
-        if (!start || !end) { alert("Select date range"); return; }
+        const startStr = document.getElementById('export-start-date').value;
+        const endStr = document.getElementById('export-end-date').value;
+        if (!startStr || !endStr) { alert("Select date range"); return; }
+        const start = new Date(startStr).getTime();
+        const end = new Date(endStr).getTime() + 86400000;
         txs = txs.filter(t => parseInt(t[4]) >= start && parseInt(t[4]) <= end);
     }
 
