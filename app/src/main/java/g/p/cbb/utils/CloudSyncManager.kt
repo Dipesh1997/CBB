@@ -244,11 +244,23 @@ class CloudSyncManager @Inject constructor(
         val rows = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A2:I").execute().getValues() ?: return
         rows.forEach { row ->
             if (row.size < 9) return@forEach
-            val sid = row[8].toString().trim()
-            val last = row[7].toString().toLongOrNull() ?: 0L
+            val sid = row.getOrNull(8)?.toString()?.trim() ?: return@forEach
+            val last = row.getOrNull(7)?.toString()?.toLongOrNull() ?: 0L
             val local = customerDao.getCustomerByServerId(sid)
             if (local == null || last > local.lastUpdated) {
-                customerDao.insertCustomer(Customer(id = local?.id ?: 0, name = row[1].toString(), phone = row[2].toString(), address = row[3].toString(), totalBalance = row[4].toString().toDoubleOrNull() ?: 0.0, isBadDebt = row[5].toString().toBoolean(), createdBy = row[6].toString(), lastUpdated = last, syncStatus = 0, serverId = sid))
+                val customer = Customer(
+                    id = local?.id ?: 0,
+                    name = row.getOrNull(1)?.toString() ?: "Unknown",
+                    phone = row.getOrNull(2)?.toString() ?: "",
+                    address = row.getOrNull(3)?.toString() ?: "",
+                    totalBalance = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0,
+                    isBadDebt = row.getOrNull(5)?.toString()?.toBoolean() ?: false,
+                    createdBy = row.getOrNull(6)?.toString() ?: "unknown",
+                    lastUpdated = last,
+                    syncStatus = 0,
+                    serverId = sid
+                )
+                customerDao.insertCustomer(customer)
             }
         }
     }
@@ -257,13 +269,28 @@ class CloudSyncManager @Inject constructor(
         val rows = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A2:M").execute().getValues() ?: return
         rows.forEach { row ->
             if (row.size < 13) return@forEach
-            val sid = row[12].toString().trim()
-            val last = row[11].toString().toLongOrNull() ?: 0L
-            val cid = row[1].toString().trim()
+            val sid = row.getOrNull(12)?.toString()?.trim() ?: return@forEach
+            val last = row.getOrNull(11)?.toString()?.toLongOrNull() ?: 0L
+            val cid = row.getOrNull(1)?.toString()?.trim() ?: return@forEach
             val cust = customerDao.getCustomerByServerId(cid) ?: return@forEach
             val local = transactionDao.getTransactionByServerId(sid)
             if (local == null || last > local.lastUpdated) {
-                transactionDao.insertTransaction(Transaction(id = local?.id ?: 0, customerId = cust.id, amount = row[2].toString().toDoubleOrNull() ?: 0.0, type = try { TransactionType.valueOf(row[3].toString()) } catch (e: Exception) { TransactionType.DEBIT }, timestamp = row[4].toString().toLongOrNull() ?: 0L, note = row[5].toString(), attachmentPath = null, createdBy = row[10].toString(), lastUpdated = last, syncStatus = 0, serverId = sid, driveFileId = row[8].toString().takeIf { it.isNotEmpty() }, parentServerId = row[9].toString().takeIf { it.isNotEmpty() }))
+                val tx = Transaction(
+                    id = local?.id ?: 0,
+                    customerId = cust.id,
+                    amount = row.getOrNull(2)?.toString()?.toDoubleOrNull() ?: 0.0,
+                    type = try { TransactionType.valueOf(row.getOrNull(3)?.toString() ?: "DEBIT") } catch (e: Exception) { TransactionType.DEBIT },
+                    timestamp = row.getOrNull(4)?.toString()?.toLongOrNull() ?: 0L,
+                    note = row.getOrNull(5)?.toString() ?: "",
+                    attachmentPath = null,
+                    createdBy = row.getOrNull(10)?.toString() ?: "unknown",
+                    lastUpdated = last,
+                    syncStatus = 0,
+                    serverId = sid,
+                    driveFileId = row.getOrNull(8)?.toString()?.takeIf { it.isNotEmpty() },
+                    parentServerId = row.getOrNull(9)?.toString()?.takeIf { it.isNotEmpty() }
+                )
+                transactionDao.insertTransaction(tx)
             }
         }
     }
