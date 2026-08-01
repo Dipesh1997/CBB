@@ -34,10 +34,25 @@ object GoogleSheetsHelper {
             writeHeaders(sheets, spreadsheetId)
         } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
             throw e
+        } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException) {
+            val cause = e.cause
+            if (cause is com.google.android.gms.auth.UserRecoverableAuthException) {
+                throw com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException(cause)
+            }
+            throw e
+        } catch (e: com.google.android.gms.auth.UserRecoverableAuthException) {
+            throw com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException(e)
         } catch (e: Exception) {
+            val cause = e.cause
+            if (cause is com.google.android.gms.auth.UserRecoverableAuthException) {
+                throw com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException(cause)
+            }
+            if (cause is com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
+                throw cause
+            }
             val msg = e.message ?: e.javaClass.simpleName
             android.util.Log.e("GoogleSheets", "Critical Header Setup Failure: $msg", e)
-            throw Exception("Failed to connect to Spreadsheet: $msg. Ensure ID is valid.")
+            throw Exception("Failed to connect to Spreadsheet: $msg. Ensure ID is valid.", e)
         }
     }
 

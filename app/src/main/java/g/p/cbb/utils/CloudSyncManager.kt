@@ -123,7 +123,22 @@ class CloudSyncManager @Inject constructor(
                 Log.i("CloudSync", "Sync Completed Successfully for $email")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
+            } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException) {
+                val cause = e.cause
+                if (cause is com.google.android.gms.auth.UserRecoverableAuthException) {
+                    throw UserRecoverableAuthIOException(cause)
+                }
+                throw e
+            } catch (e: com.google.android.gms.auth.UserRecoverableAuthException) {
+                throw UserRecoverableAuthIOException(e)
             } catch (e: Exception) {
+                val cause = e.cause
+                if (cause is UserRecoverableAuthIOException) {
+                    throw cause
+                }
+                if (cause is com.google.android.gms.auth.UserRecoverableAuthException) {
+                    throw UserRecoverableAuthIOException(cause)
+                }
                 Log.e("CloudSync", "Sync Fatal Error: ${e.message}")
                 e.printStackTrace()
                 throw e 

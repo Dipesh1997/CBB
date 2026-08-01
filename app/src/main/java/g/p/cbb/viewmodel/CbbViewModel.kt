@@ -54,10 +54,21 @@ class CbbViewModel @Inject constructor(
                 syncManager.fullSync()
                 if (isManual) _syncEvents.emit(SyncEvent.Success)
             } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
-                if (isManual) _syncEvents.emit(SyncEvent.RequestAuthorization(e.intent))
+                e.intent?.let { _syncEvents.emit(SyncEvent.RequestAuthorization(it)) }
+            } catch (e: com.google.android.gms.auth.UserRecoverableAuthException) {
+                e.intent?.let { _syncEvents.emit(SyncEvent.RequestAuthorization(it)) }
             } catch (e: Exception) {
-                val errorMsg = e.message ?: "Sync Failed"
-                if (isManual) {
+                val cause = e.cause
+                val intent = when {
+                    e is com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException -> e.intent
+                    cause is com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException -> cause.intent
+                    cause is com.google.android.gms.auth.UserRecoverableAuthException -> cause.intent
+                    else -> null
+                }
+                if (intent != null) {
+                    _syncEvents.emit(SyncEvent.RequestAuthorization(intent))
+                } else if (isManual) {
+                    val errorMsg = e.message ?: "Sync Failed"
                     if (errorMsg.contains("name must not be empty", ignoreCase = true)) {
                         _syncEvents.emit(SyncEvent.PickAccount)
                     } else {
