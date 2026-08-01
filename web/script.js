@@ -133,9 +133,11 @@ function showModal(type, id = null) {
 
     if (type === 'customer') {
         document.getElementById('modal-title').textContent = data ? 'Edit Customer' : 'Add Customer';
+        document.getElementById('save-btn').textContent = data ? 'Update Customer' : 'Save';
         fields.innerHTML = `<div class="form-group"><label>Name</label><input type="text" id="cust-name" value="${data ? data[1] : ''}" required></div><div class="form-group"><label>Phone</label><input type="text" id="cust-phone" value="${data ? data[2] : ''}" required></div><div class="form-group"><label>Address</label><input type="text" id="cust-address" value="${data ? data[3] : ''}"></div>`;
     } else if (type === 'transaction') {
         document.getElementById('modal-title').textContent = data ? 'Edit Transaction' : (currentParentId ? 'Record Part Payment' : 'Add Transaction');
+        document.getElementById('save-btn').textContent = data ? 'Update Bill' : 'Save';
         let pc = '';
         if (data) pc = data[1];
         else if (currentParentId) { const p = appData.transactions.find(t => t[12] === currentParentId); pc = p ? p[1] : ''; }
@@ -258,9 +260,19 @@ async function compressImage(f, mw, q) {
 }
 
 async function imageToBase64(did) {
-    const r = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`, { headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token } });
-    const b = await r.blob();
-    return new Promise((res) => { const reader = new FileReader(); reader.onloadend = () => res(reader.result); reader.readAsDataURL(b); });
+    try {
+        const response = await fetch(`https://drive.google.com/thumbnail?id=${did}&sz=w500`);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.warn("Failed to fetch image via thumbnail, skipping in PDF:", did);
+        return null;
+    }
 }
 
 async function exportStatement(type) {
@@ -329,7 +341,15 @@ async function logHistory(a) { const r = [ '0', Date.now().toString(), a, 'TRUE'
 
 async function updateOrAppendRow(s, sid, r, c) {
     const v = (await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: databaseId, range: `${s}!A:Z` })).result.values;
-    let i = -1; if (v) { for (let x = 0; x < v.length; x++) { if (v[x].length > c && v[x][c] === sid) { i = x + 1; break; } } }
+    let i = -1;
+    const targetSid = (sid || '').trim();
+    if (v) {
+        for (let x = 0; x < v.length; x++) {
+            if (v[x].length > c && (v[x][c] || '').trim() === targetSid) {
+                i = x + 1; break;
+            }
+        }
+    }
     if (i !== -1) await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: databaseId, range: `${s}!A${i}`, valueInputOption: 'USER_ENTERED', resource: { values: [r] } });
     else await gapi.client.sheets.spreadsheets.values.append({ spreadsheetId: databaseId, range: `${s}!A1`, valueInputOption: 'USER_ENTERED', resource: { values: [r] } });
 }
