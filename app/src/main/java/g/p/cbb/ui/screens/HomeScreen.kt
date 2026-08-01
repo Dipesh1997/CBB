@@ -34,12 +34,34 @@ fun HomeScreen(
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val userEmail by viewModel.userEmail.collectAsState()
+    val availableAccounts by viewModel.availableAccounts.collectAsState()
+    val showAccountPickerDialog by viewModel.showAccountPickerDialog.collectAsState()
     val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddCustomerDialog by remember { mutableStateOf(false) }
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var customerToDelete by remember { mutableStateOf<Customer?>(null) }
+
+    if (showAccountPickerDialog) {
+        AccountSelectionDialog(
+            currentEmail = userEmail,
+            availableAccounts = availableAccounts,
+            onAccountSelected = { email -> viewModel.selectAccount(email) },
+            onAddAccountClick = {
+                viewModel.dismissAccountPicker()
+                try {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_ADD_ACCOUNT).apply {
+                        putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    viewModel.pickAccount()
+                }
+            },
+            onDismiss = { viewModel.dismissAccountPicker() }
+        )
+    }
 
     val filteredCustomers = customers.filter {
         it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
@@ -58,7 +80,7 @@ fun HomeScreen(
                 title = {
                     Column(
                         modifier = Modifier
-                            .clickable { viewModel.pickAccount() }
+                            .clickable { viewModel.openAccountPicker(context) }
                             .padding(vertical = 4.dp)
                     ) {
                         Text(

@@ -34,6 +34,33 @@ class CbbViewModel @Inject constructor(
     val userEmail = authManager.userEmail
     val userName = authManager.userName
 
+    private val _availableAccounts = MutableStateFlow<List<String>>(emptyList())
+    val availableAccounts = _availableAccounts.asStateFlow()
+
+    private val _showAccountPickerDialog = MutableStateFlow(false)
+    val showAccountPickerDialog = _showAccountPickerDialog.asStateFlow()
+
+    fun openAccountPicker(context: android.content.Context) {
+        val am = android.accounts.AccountManager.get(context)
+        val googleAccounts = try {
+            am.getAccountsByType("com.google").map { it.name }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        _availableAccounts.value = googleAccounts
+        _showAccountPickerDialog.value = true
+    }
+
+    fun dismissAccountPicker() {
+        _showAccountPickerDialog.value = false
+    }
+
+    fun selectAccount(email: String) {
+        _showAccountPickerDialog.value = false
+        authManager.forceAccountLink(email)
+        syncNow()
+    }
+
     fun saveOAuthToken(token: String) {
         viewModelScope.launch {
             authManager.saveOAuthAccessToken(token)
