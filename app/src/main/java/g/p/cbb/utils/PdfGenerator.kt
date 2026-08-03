@@ -42,10 +42,11 @@ object PdfGenerator {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val filteredTransactions = transactions.filter { item ->
+                    val matchesCustomer = item.transaction.customerId == customer.id
                     val ts = item.transaction.timestamp
                     val afterStart = startDate == null || ts >= startDate
                     val beforeEnd = endDate == null || ts <= endDate
-                    afterStart && beforeEnd
+                    matchesCustomer && afterStart && beforeEnd
                 }.sortedByDescending { it.transaction.timestamp }
 
                 val pdfDocument = PdfDocument()

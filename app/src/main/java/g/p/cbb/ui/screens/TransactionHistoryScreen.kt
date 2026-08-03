@@ -56,6 +56,7 @@ fun TransactionHistoryScreen(
 
     LaunchedEffect(Unit) {
         viewModel.markTransactionsAsViewed()
+        g.p.cbb.utils.NotificationHelper.resetNotificationCount(context)
     }
 
     val filteredTransactions = transactions.filter { tx ->
@@ -120,7 +121,10 @@ fun TransactionHistoryScreen(
                                 )
                             }
                             TextButton(
-                                onClick = { viewModel.markTransactionsAsViewed() },
+                                onClick = {
+                                    viewModel.markTransactionsAsViewed()
+                                    g.p.cbb.utils.NotificationHelper.resetNotificationCount(context)
+                                },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Icon(Icons.Default.DoneAll, contentDescription = "Mark Read", modifier = Modifier.size(16.dp), tint = Color(0xFF0288D1))
@@ -172,7 +176,7 @@ fun TransactionHistoryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { transactionToEdit = tx },
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {

@@ -74,7 +74,7 @@ fun TipsCard(
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .background(Color.White, CircleShape)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
                             .border(1.dp, Info.copy(alpha = 0.5f), CircleShape)
                     ) {
                         Icon(
@@ -91,7 +91,7 @@ fun TipsCard(
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .background(Color.White, CircleShape)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
                             .border(1.dp, Info.copy(alpha = 0.5f), CircleShape)
                     ) {
                         Icon(

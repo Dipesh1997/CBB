@@ -266,6 +266,14 @@ class CbbViewModel @Inject constructor(
         return list.sortedByDescending { it.transaction.timestamp }
     }
 
+    fun getTransactionsWithDetailsForCustomer(customerId: Long): List<g.p.cbb.data.model.TransactionWithDetails> {
+        val list = mutableListOf<g.p.cbb.data.model.TransactionWithDetails>()
+        transactions.value.filter { it.customerId == customerId }.forEach { transaction ->
+            list.add(g.p.cbb.data.model.TransactionWithDetails(transaction))
+        }
+        return list.sortedByDescending { it.transaction.timestamp }
+    }
+
     fun selectCustomer(customer: Customer) {
         _selectedCustomer.value = customer
     }

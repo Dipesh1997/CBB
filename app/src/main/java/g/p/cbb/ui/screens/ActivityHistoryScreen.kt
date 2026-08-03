@@ -107,7 +107,7 @@ fun ActivityHistoryScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                         items(tombstones) { ts ->
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8F8)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {

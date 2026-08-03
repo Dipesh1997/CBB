@@ -146,6 +146,7 @@ fun HomeScreen(
         ) {
             // Stats Grid
             item {
+                val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -155,17 +156,17 @@ fun HomeScreen(
                     // Receivables Card
                     Card(
                         modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(containerColor = ReceivableBg),
+                        colors = CardDefaults.cardColors(containerColor = if (isDark) ReceivableBgDark else ReceivableBg),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Total Receivables", fontSize = 12.sp, color = ReceivableText)
+                            Text("Total Receivables", fontSize = 12.sp, color = if (isDark) ReceivableTextDark else ReceivableText)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = currencyFormatter.format(totalReceivable),
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ReceivableText
+                                color = if (isDark) ReceivableTextDark else ReceivableText
                             )
                         }
                     }
@@ -173,17 +174,17 @@ fun HomeScreen(
                     // Advances Card
                     Card(
                         modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(containerColor = AdvanceBg),
+                        colors = CardDefaults.cardColors(containerColor = if (isDark) AdvanceBgDark else AdvanceBg),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Total Advances", fontSize = 12.sp, color = AdvanceText)
+                            Text("Total Advances", fontSize = 12.sp, color = if (isDark) AdvanceTextDark else AdvanceText)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = currencyFormatter.format(totalAdvance),
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = AdvanceText
+                                color = if (isDark) AdvanceTextDark else AdvanceText
                             )
                         }
                     }
@@ -235,7 +236,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onCustomerClick(customer) },
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {

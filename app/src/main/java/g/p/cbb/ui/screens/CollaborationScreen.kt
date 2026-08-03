@@ -91,7 +91,7 @@ fun CollaborationScreen(viewModel: CbbViewModel) {
                 // User Account Info Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -121,7 +121,7 @@ fun CollaborationScreen(viewModel: CbbViewModel) {
                 // 1. My Admin Database Invite Code & Share Link Box
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(
@@ -207,7 +207,7 @@ fun CollaborationScreen(viewModel: CbbViewModel) {
                 // 2. Grant Gmail Access to Collaborator
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
@@ -265,7 +265,7 @@ fun CollaborationScreen(viewModel: CbbViewModel) {
                 // 3. Join / Connect to an Admin's Database Box
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(

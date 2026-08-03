@@ -1,7 +1,10 @@
 package g.p.cbb.ui.screens
 
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.entity.Transaction
@@ -48,6 +52,9 @@ fun CustomerDetailScreen(
     val transactions by viewModel.transactions.collectAsState()
     val selectedCustomerState by viewModel.selectedCustomer.collectAsState()
     val currentCustomer = selectedCustomerState ?: customer
+    val customerTransactions = remember(transactions, currentCustomer.id) {
+        transactions.filter { it.customerId == currentCustomer.id }
+    }
     val context = LocalContext.current
 
     var showAddTransactionDialog by remember { mutableStateOf(false) }
@@ -57,6 +64,26 @@ fun CustomerDetailScreen(
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
     var parentTransactionForPayment by remember { mutableStateOf<Transaction?>(null) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
+    var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var showQuickBillDialog by remember { mutableStateOf(false) }
+
+    // Temp file URI for camera capture
+    val cameraPhotoFile = remember {
+        File(context.cacheDir, "quick_bill_${System.currentTimeMillis()}.jpg")
+    }
+    val cameraPhotoFileUri: Uri = remember {
+        FileProvider.getUriForFile(context, "${context.packageName}.provider", cameraPhotoFile)
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            val savedPath = g.p.cbb.utils.ImageUtils.saveCompressedAttachment(context, cameraPhotoFileUri)
+            capturedPhotoUri = if (savedPath != null) Uri.fromFile(File(savedPath)) else cameraPhotoFileUri
+            showQuickBillDialog = true
+        }
+    }
 
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
     val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -91,12 +118,23 @@ fun CustomerDetailScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddTransactionDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Camera quick-capture FAB
+                ExtendedFloatingActionButton(
+                    onClick = { cameraLauncher.launch(cameraPhotoFileUri) },
+                    icon = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
+                    text = { Text("Capture Bill", fontWeight = FontWeight.SemiBold) },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                // Manual add-bill FAB
+                ExtendedFloatingActionButton(
+                    onClick = { showAddTransactionDialog = true },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Add Bill", fontWeight = FontWeight.SemiBold) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White
+                )
             }
         }
     ) { padding ->
@@ -105,7 +143,8 @@ fun CustomerDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
             // Customer Ledger Info Box
             item {
@@ -113,7 +152,7 @@ fun CustomerDetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -168,10 +207,11 @@ fun CustomerDetailScreen(
                 val reminderFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
                 val activeReminder = currentCustomer.reminderTime?.takeIf { it > System.currentTimeMillis() }
 
+                val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (activeReminder != null) Color(0xFFE8F5E9) else Color(0xFFF3F4F6)
+                        containerColor = if (activeReminder != null) (if (isDark) ReceivableBgDark else Color(0xFFE8F5E9)) else MaterialTheme.colorScheme.surfaceVariant
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -295,7 +335,7 @@ fun CustomerDetailScreen(
             // Transactions Header
             item {
                 Text(
-                    text = "Transactions History (${transactions.size})",
+                    text = "Transactions History (${customerTransactions.size})",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     modifier = Modifier.padding(top = 8.dp)
@@ -303,16 +343,16 @@ fun CustomerDetailScreen(
             }
 
             // Transactions List
-            items(transactions, key = { it.id }) { tx ->
-                val linkedPayments = remember(transactions, tx.id) {
-                    transactions.filter { it.parentTransactionId == tx.id }
+            items(customerTransactions, key = { it.id }) { tx ->
+                val linkedPayments = remember(customerTransactions, tx.id) {
+                    customerTransactions.filter { it.parentTransactionId == tx.id }
                 }
 
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { transactionToEdit = tx },
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -457,8 +497,8 @@ fun CustomerDetailScreen(
 
     if (showExportPdfDialog) {
         ExportPdfDialog(
-            customer = customer,
-            transactions = viewModel.getAllTransactionsWithDetails(),
+            customer = currentCustomer,
+            transactions = viewModel.getTransactionsWithDetailsForCustomer(currentCustomer.id),
             onDismiss = { showExportPdfDialog = false }
         )
     }
@@ -468,6 +508,30 @@ fun CustomerDetailScreen(
             customer = customer,
             onDismiss = { showCustomerPdfsDialog = false },
             onGenerateNewPdf = { showExportPdfDialog = true }
+        )
+    }
+
+    // Quick Bill Dialog (after camera capture)
+    if (showQuickBillDialog && capturedPhotoUri != null) {
+        QuickBillDialog(
+            capturedPhotoUri = capturedPhotoUri!!,
+            onDismiss = {
+                showQuickBillDialog = false
+                capturedPhotoUri = null
+            },
+            onConfirm = { amount, type, note, photoUri ->
+                val permanentPath = g.p.cbb.utils.ImageUtils.ensurePermanentLocalPath(context, photoUri.toString())
+                viewModel.addTransaction(
+                    amount = amount,
+                    type = type,
+                    note = note,
+                    timestamp = System.currentTimeMillis(),
+                    attachmentPath = permanentPath,
+                    parentTransactionId = null
+                )
+                showQuickBillDialog = false
+                capturedPhotoUri = null
+            }
         )
     }
 

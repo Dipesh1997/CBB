@@ -170,7 +170,7 @@ fun CustomerPdfsDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { selectedPdfForViewing = file },
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Row(

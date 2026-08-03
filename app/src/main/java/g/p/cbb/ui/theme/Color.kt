@@ -2,6 +2,7 @@ package g.p.cbb.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Light Theme Colors
 val Primary = Color(0xFF6750A4)
 val OnPrimary = Color(0xFFFFFFFF)
 val PrimaryContainer = Color(0xFFEADDFF)
@@ -20,6 +21,25 @@ val Outline = Color(0xFF79747E)
 val Error = Color(0xFFB3261E)
 val OnError = Color(0xFFFFFFFF)
 
+// Dark Theme Colors
+val PrimaryDark = Color(0xFFD0BCFF)
+val OnPrimaryDark = Color(0xFF381E72)
+val PrimaryContainerDark = Color(0xFF4F378B)
+val OnPrimaryContainerDark = Color(0xFFEADDFF)
+
+val SecondaryDark = Color(0xFFCCC2DC)
+val OnSecondaryDark = Color(0xFF332D41)
+val SecondaryContainerDark = Color(0xFF4A4458)
+
+val SurfaceDark = Color(0xFF141218)
+val OnSurfaceDark = Color(0xFFE6E0E9)
+val SurfaceVariantDark = Color(0xFF2B2930)
+val OnSurfaceVariantDark = Color(0xFFCAC4D0)
+val OutlineDark = Color(0xFF938F99)
+
+val ErrorDark = Color(0xFFF2B8B5)
+val OnErrorDark = Color(0xFF601410)
+
 // Tips & Warning Colors
 val Warning = Color(0xFFD97706)
 val WarningContainer = Color(0xFFFEF3C7)
@@ -37,3 +57,10 @@ val ReceivableBg = Color(0xFFE8F5E9)
 val ReceivableText = Color(0xFF1B5E20)
 val AdvanceBg = Color(0xFFFFEBEE)
 val AdvanceText = Color(0xFFB71C1C)
+
+// Dark Semantic Badges
+val ReceivableBgDark = Color(0xFF1B382B)
+val ReceivableTextDark = Color(0xFF81C784)
+val AdvanceBgDark = Color(0xFF3E1F22)
+val AdvanceTextDark = Color(0xFFE57373)
+

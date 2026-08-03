@@ -203,7 +203,8 @@ class CloudSyncManager @Inject constructor(
             tx.attachmentPath?.let { path ->
                 val file = java.io.File(path)
                 if (file.exists()) {
-                    driveFileId = GoogleDriveHelper.uploadFile(drive, file, null)
+                    val uploadFile = ImageUtils.getCompressedFileForUpload(context, file)
+                    driveFileId = GoogleDriveHelper.uploadFile(drive, uploadFile, null)
                     transactionDao.updateDriveFileId(tx.id, driveFileId)
                 }
             }
