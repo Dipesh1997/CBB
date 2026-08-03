@@ -44,6 +44,12 @@ class SettingsRepository @Inject constructor(
 
     fun getNotificationsEnabled(): Boolean = prefs.getBoolean("notifications_enabled", true)
     fun saveNotificationsEnabled(enabled: Boolean) = prefs.edit().putBoolean("notifications_enabled", enabled).apply()
+
+    fun getThemeMode(): ThemeMode {
+        val name = prefs.getString("theme_mode", ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name
+        return try { ThemeMode.valueOf(name) } catch (e: Exception) { ThemeMode.SYSTEM }
+    }
+    fun saveThemeMode(mode: ThemeMode) = prefs.edit().putString("theme_mode", mode.name).apply()
 }
 
 enum class SortOption {
@@ -51,3 +57,5 @@ enum class SortOption {
     BALANCE_LOW_TO_HIGH,
     BALANCE_HIGH_TO_LOW
 }
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }

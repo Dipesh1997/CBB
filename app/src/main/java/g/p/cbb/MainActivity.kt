@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
@@ -31,6 +32,7 @@ import androidx.work.*
 import dagger.hilt.android.AndroidEntryPoint
 import g.p.cbb.ui.screens.*
 import g.p.cbb.ui.theme.CBBTheme
+import g.p.cbb.repository.ThemeMode
 import g.p.cbb.utils.SyncWorker
 import g.p.cbb.viewmodel.CbbViewModel
 import java.util.concurrent.TimeUnit
@@ -45,7 +47,13 @@ class MainActivity : ComponentActivity() {
         handleOAuthRedirect(intent)
         enableEdgeToEdge()
         setContent {
-            CBBTheme {
+            val themeMode by viewModel.themeMode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            CBBTheme(darkTheme = darkTheme) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     CbbApp(viewModel = viewModel)
                 }

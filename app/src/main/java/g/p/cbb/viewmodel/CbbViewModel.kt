@@ -7,6 +7,7 @@ import g.p.cbb.data.entity.*
 import g.p.cbb.repository.CbbRepository
 import g.p.cbb.repository.SettingsRepository
 import g.p.cbb.repository.SortOption
+import g.p.cbb.repository.ThemeMode
 import g.p.cbb.utils.GoogleAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -224,6 +225,14 @@ class CbbViewModel @Inject constructor(
     fun toggleNotifications(enabled: Boolean) {
         areNotificationsEnabled.value = enabled
         settingsRepository.saveNotificationsEnabled(enabled)
+    }
+
+    private val _themeMode = MutableStateFlow(settingsRepository.getThemeMode())
+    val themeMode = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        settingsRepository.saveThemeMode(mode)
     }
 
     private val _selectedBillPayments = MutableStateFlow<List<Transaction>>(emptyList())

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import g.p.cbb.data.entity.Customer
+import g.p.cbb.repository.ThemeMode
 import g.p.cbb.ui.components.*
 import g.p.cbb.ui.theme.*
 import g.p.cbb.viewmodel.CbbViewModel
@@ -37,12 +38,14 @@ fun HomeScreen(
     val userEmail by viewModel.userEmail.collectAsState()
     val availableAccounts by viewModel.availableAccounts.collectAsState()
     val showAccountPickerDialog by viewModel.showAccountPickerDialog.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddCustomerDialog by remember { mutableStateOf(false) }
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var customerToDelete by remember { mutableStateOf<Customer?>(null) }
+    var showThemeMenu by remember { mutableStateOf(false) }
 
     if (showAccountPickerDialog) {
         AccountSelectionDialog(
@@ -118,6 +121,40 @@ fun HomeScreen(
                             }
                         }
                     )
+                    // Theme picker
+                    Box {
+                        IconButton(onClick = { showThemeMenu = true }) {
+                            Icon(
+                                imageVector = when (themeMode) {
+                                    ThemeMode.LIGHT -> Icons.Default.LightMode
+                                    ThemeMode.DARK -> Icons.Default.DarkMode
+                                    ThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                                },
+                                contentDescription = "Change Theme",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showThemeMenu,
+                            onDismissRequest = { showThemeMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("System Default") },
+                                leadingIcon = { Icon(Icons.Default.BrightnessAuto, contentDescription = null) },
+                                onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM); showThemeMenu = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Light") },
+                                leadingIcon = { Icon(Icons.Default.LightMode, contentDescription = null) },
+                                onClick = { viewModel.setThemeMode(ThemeMode.LIGHT); showThemeMenu = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Dark") },
+                                leadingIcon = { Icon(Icons.Default.DarkMode, contentDescription = null) },
+                                onClick = { viewModel.setThemeMode(ThemeMode.DARK); showThemeMenu = false }
+                            )
+                        }
+                    }
                     IconButton(onClick = onNavigateToCollaboration) {
                         Icon(Icons.Default.Group, contentDescription = "Team Collaboration & Invites", tint = MaterialTheme.colorScheme.primary)
                     }
@@ -197,11 +234,6 @@ fun HomeScreen(
                     badDebtCount = badDebtCount,
                     highOverdueCount = highOverdueCount
                 )
-            }
-
-            // Tip of the Day Card
-            item {
-                TipsCard()
             }
 
             // Search Bar & Customer Count Header

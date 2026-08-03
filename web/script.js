@@ -305,6 +305,9 @@ function renderAll() {
 
     const cbody = document.querySelector('#customers-table tbody'); cbody.innerHTML = '';
     appData.customers.forEach(r => {
+        // Skip rows with no valid name or server ID (undefined rows)
+        if (!r || !r[1] || r[1].toString().trim() === '' || r[1] === 'undefined') return;
+        if (!r[8] || r[8].toString().trim() === '' || r[8] === 'undefined') return;
         const bal = parseFloat(r[4] || 0), sid = r[8];
         const isBadDebt = r[5] === 'TRUE';
         let statusBadge = '';
@@ -321,7 +324,9 @@ function renderAll() {
     });
 
     const tbody = document.querySelector('#transactions-table tbody'); tbody.innerHTML = '';
-    [...appData.transactions].sort((a, b) => parseInt(b[4]) - parseInt(a[4])).slice(0, 50).forEach(r => {
+    [...appData.transactions]
+        .filter(r => r && r[12] && r[12].toString().trim() !== '' && r[12] !== 'undefined')
+        .sort((a, b) => parseInt(b[4]) - parseInt(a[4])).slice(0, 50).forEach(r => {
         const cust = appData.customers.find(c => c[8] === r[1]);
         const did = (r[8] || '').trim(), tid = r[12];
         const tr = document.createElement('tr');
@@ -943,3 +948,13 @@ function hideModal() { document.getElementById('modal-overlay').style.display = 
 function findRecord(t, id) { if (t === 'customer') return appData.customers.find(c => c[8] === id); if (t === 'transaction') return appData.transactions.find(x => x[12] === id); return null; }
 function showExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; }
 function hideExportModal() { document.getElementById('export-modal-overlay').style.display = 'none'; }
+
+function filterCustomers() {
+    const q = (document.getElementById('customer-search')?.value || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#customers-table tbody tr');
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = (!q || text.includes(q)) ? '' : 'none';
+    });
+}
+
