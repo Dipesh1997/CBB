@@ -28,6 +28,8 @@ class CbbRepository @Inject constructor(
 
     suspend fun getCustomerById(id: Long): Customer? = customerDao.getCustomerById(id)
 
+    suspend fun getTransactionById(id: Long): Transaction? = transactionDao.getTransactionById(id)
+
     suspend fun addCustomer(customer: Customer): Long = withContext(Dispatchers.IO) {
         val syncCustomer = customer.copy(
             createdBy = getCurrentUser(),
@@ -152,7 +154,40 @@ class CbbRepository @Inject constructor(
 
     fun getActivityLogs(): Flow<List<ActivityLog>> = activityLogDao.getAllLogs()
 
+    fun getAllTombstones(): Flow<List<Tombstone>> = tombstoneDao.getAllTombstones()
+
+    suspend fun restoreTombstone(tombstone: Tombstone) = withContext(Dispatchers.IO) {
+        try {
+            val gson = com.google.gson.Gson()
+            if (tombstone.tableName == "transactions") {
+                val tx = gson.fromJson(tombstone.contentJson, Transaction::class.java)
+                if (tx != null) {
+                    val restoredTx = tx.copy(id = 0, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
+                    transactionDao.insertTransaction(restoredTx)
+                    val balanceChange = if (restoredTx.type == TransactionType.CREDIT) -restoredTx.amount else restoredTx.amount
+                    customerDao.updateBalance(restoredTx.customerId, balanceChange, System.currentTimeMillis())
+                    val cust = customerDao.getCustomerById(restoredTx.customerId)
+                    logActivity("Restored Transaction: ${restoredTx.type} ₹${restoredTx.amount} for ${cust?.name ?: "Unknown"}")
+                }
+            } else if (tombstone.tableName == "customers") {
+                val cust = gson.fromJson(tombstone.contentJson, Customer::class.java)
+                if (cust != null) {
+                    val restoredCust = cust.copy(id = 0, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
+                    customerDao.insertCustomer(restoredCust)
+                    logActivity("Restored Customer: ${restoredCust.name}")
+                }
+            }
+            tombstoneDao.deleteTombstone(tombstone)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun getUnreadLogCount(): Flow<Int> = activityLogDao.getUnreadCount()
+
+    fun getAllTransactions(): Flow<List<Transaction>> = transactionDao.getAllTransactions()
+
+    fun getUnreadTransactionsCount(lastViewedTime: Long): Flow<Int> = transactionDao.getUnreadTransactionsCount(lastViewedTime)
 
     suspend fun markLogsAsRead() {
         activityLogDao.markAllAsRead()

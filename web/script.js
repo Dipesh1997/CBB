@@ -4,7 +4,11 @@ const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googlea
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
-let databaseId = '1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58'; // Hardcoded Spreadsheet ID
+const urlParams = new URLSearchParams(window.location.search);
+const sharedSheetId = urlParams.get('sheetId') || urlParams.get('join');
+let databaseId = sharedSheetId || localStorage.getItem('custom_sheet_id') || '1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58';
+if (sharedSheetId) localStorage.setItem('custom_sheet_id', sharedSheetId);
+
 let currentModalType = null;
 let currentEditId = null;
 let currentParentId = null;
@@ -108,7 +112,7 @@ function getErrorMessage(e) { if (e?.result?.error?.message) return e.result.err
 let syncTimer = null;
 let lastDataSignature = '';
 let isSilentSyncing = false;
-const SYNC_INTERVAL_MS = 5000;
+const SYNC_INTERVAL_MS = 20000;
 
 function computeDataSignature(customers, transactions) {
     return JSON.stringify(customers) + '||' + JSON.stringify(transactions);
@@ -127,7 +131,7 @@ function updateSyncStatus(status, text) {
 
 function startAutoSync() {
     stopAutoSync();
-    updateSyncStatus('active', 'Live Auto-Sync');
+    updateSyncStatus('active', 'Live Auto-Sync (20s)');
     syncTimer = setInterval(() => {
         if (document.visibilityState === 'visible' && !isSilentSyncing) {
             silentSyncData();
@@ -724,96 +728,128 @@ async function exportStatement(type) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
-        // Header Title
-        doc.setFontSize(22);
-        doc.text("Customer Statement", 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 27);
-        doc.line(14, 30, 196, 30);
+        // Sort transactions latest first
+        txs.sort((a, b) => parseInt(b[4]) - parseInt(a[4]));
 
-        // Customer Details
-        doc.setFontSize(11);
-        doc.text(`Customer: ${cust[1]}`, 14, 40);
-        doc.text(`Phone: ${cust[2]}`, 14, 46);
-        doc.text(`Balance: Rs. ${parseFloat(cust[4] || 0).toLocaleString('en-IN')}`, 14, 52);
+        if (type === 'medium') {
+            // Summary Table Export
+            doc.setFontSize(18);
+            doc.setFont(undefined, 'bold');
+            doc.text("Customer Ledger Report", 105, 20, { align: "center" });
 
-        let y = 60;
-        let processedImgCount = 0;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Name: ${cust[1]}`, 14, 30);
+            doc.text(`Phone: ${cust[2]}`, 14, 36);
+            doc.text(`Current Balance: Rs. ${parseFloat(cust[4] || 0).toFixed(2)}`, 14, 42);
 
-        for (let i = 0; i < txs.length; i++) {
-            const t = txs[i];
-            const linked = appData.transactions.filter(x => x[9] === t[12]);
-            const head = [['Date', 'Type', 'Amount', 'Note']];
-            const body = [[
+            const tableHead = [['Date', 'Note', 'Type', 'Amount']];
+            const tableBody = txs.map(t => [
                 new Date(parseInt(t[4])).toLocaleDateString(),
+                t[5] || '',
                 t[3],
-                `Rs. ${parseFloat(t[2]).toLocaleString('en-IN')}`,
-                t[5] || ''
-            ]];
+                `Rs. ${parseFloat(t[2]).toFixed(2)}`
+            ]);
 
             doc.autoTable({
-                startY: y,
-                head: head,
-                body: body,
+                startY: 48,
+                head: tableHead,
+                body: tableBody,
                 theme: 'grid',
-                headStyles: { fillColor: [103, 80, 164] }
+                headStyles: { fillColor: [51, 51, 51] }
             });
-            y = doc.lastAutoTable.finalY + 5;
+        } else {
+            // Full & Custom Date Range Detailed Export (Matching Android Design)
+            doc.setFontSize(18);
+            doc.setFont(undefined, 'bold');
+            doc.text("Customer Ledger Report", 105, 20, { align: "center" });
 
-            if (linked.length > 0) {
-                doc.setFontSize(9);
-                doc.text("Part Payments Received:", 20, y);
-                y += 5;
-                const lRows = linked.map(l => [
-                    new Date(parseInt(l[4])).toLocaleDateString(),
-                    `Rs. ${parseFloat(l[2]).toLocaleString('en-IN')}`,
-                    l[5] || ''
-                ]);
-                doc.autoTable({
-                    startY: y,
-                    head: [['Date', 'Amount', 'Note']],
-                    body: lRows,
-                    theme: 'plain',
-                    margin: { left: 20 }
-                });
-                y = doc.lastAutoTable.finalY + 6;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Name: ${cust[1]}`, 14, 32);
+            doc.text(`Phone: ${cust[2]}`, 14, 38);
+            doc.text(`Current Balance: Rs. ${parseFloat(cust[4] || 0).toFixed(2)}`, 14, 44);
+
+            let y = 52;
+            if (type === 'range') {
+                const startVal = document.getElementById('export-start-date').value;
+                const endVal = document.getElementById('export-end-date').value;
+                doc.text(`Date Range: ${startVal} - ${endVal}`, 14, 50);
+                y = 58;
             }
 
-            // Export receipt images for full or custom date range export
-            const driveFileId = (t[8] || '').trim();
-            if (includeImages && driveFileId) {
-                processedImgCount++;
-                const prog = Math.round((processedImgCount / txsWithImages.length) * 100);
-                progressBar.style.width = prog + '%';
-                progressText.textContent = `Processing receipt image (${processedImgCount}/${txsWithImages.length})...`;
+            let processedImgCount = 0;
 
-                try {
-                    const base64 = await imageToBase64(driveFileId);
-                    if (base64) {
-                        if (y > 210) {
-                            doc.addPage();
-                            y = 20;
-                        }
-                        const imgFormat = base64.includes('image/png') ? 'PNG' : 'JPEG';
-                        doc.setFontSize(9);
-                        doc.text("Attached Receipt Photo:", 14, y);
-                        y += 4;
-                        doc.addImage(base64, imgFormat, 14, y, 60, 60);
-                        y += 68;
-                    }
-                } catch (e) {
-                    console.error("Image processing error for transaction:", t[12], e);
+            for (let i = 0; i < txs.length; i++) {
+                const t = txs[i];
+
+                if (y > 250) {
+                    doc.addPage();
+                    y = 20;
                 }
-            }
 
-            if (y > 260) {
-                doc.addPage();
-                y = 20;
+                // Dark Header Rectangle
+                doc.setFillColor(51, 51, 51);
+                doc.rect(14, y, 182, 9, 'F');
+
+                // White Text inside Dark Header
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                const dateObj = new Date(parseInt(t[4]));
+                const dateFormatted = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                doc.text(`${t[3]} - ${dateFormatted}`, 18, y + 6.5);
+                doc.setTextColor(0, 0, 0);
+                y += 15;
+
+                // Amount & Note
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Amount: Rs. ${parseFloat(t[2]).toFixed(2)}`, 14, y);
+                y += 6;
+
+                if (t[5] && t[5].trim()) {
+                    doc.text(`Note: ${t[5]}`, 14, y);
+                    y += 6;
+                }
+
+                // Attached Photo Image
+                const driveFileId = (t[8] || '').trim();
+                if (includeImages && driveFileId) {
+                    processedImgCount++;
+                    const prog = Math.round((processedImgCount / txsWithImages.length) * 100);
+                    progressBar.style.width = prog + '%';
+                    progressText.textContent = `Processing receipt image (${processedImgCount}/${txsWithImages.length})...`;
+
+                    try {
+                        const base64 = await imageToBase64(driveFileId);
+                        if (base64) {
+                            const imgFormat = base64.includes('image/png') ? 'PNG' : 'JPEG';
+                            const imgWidth = 90;
+                            const imgHeight = 60;
+
+                            if (y + imgHeight > 270) {
+                                doc.addPage();
+                                y = 20;
+                            }
+
+                            doc.addImage(base64, imgFormat, 14, y, imgWidth, imgHeight);
+                            y += imgHeight + 6;
+                        }
+                    } catch (e) {
+                        console.error("Image processing error for transaction:", t[12], e);
+                    }
+                }
+
+                // Divider Line
+                doc.setDrawColor(200, 200, 200);
+                doc.line(14, y, 196, y);
+                y += 10;
             }
         }
 
         doc.save(`Statement_${cust[1].replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
-        showToast(`PDF Statement for ${cust[1]} generated with receipt images!`, "success");
+        showToast(`PDF Statement for ${cust[1]} generated!`, "success");
     } catch (err) {
         console.error("PDF generation failed:", err);
         showToast("Failed to generate PDF statement: " + getErrorMessage(err), "error");

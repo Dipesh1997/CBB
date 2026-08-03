@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -35,12 +38,17 @@ import g.p.cbb.ui.theme.Error
 import g.p.cbb.ui.theme.Info
 import g.p.cbb.ui.theme.Warning
 import g.p.cbb.ui.theme.WarningContainer
+import g.p.cbb.utils.ImageUtils
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditTransactionDialog(
     customers: List<Customer>,
     preselectedCustomerId: Long? = null,
+    parentTransactionId: Long? = null,
     transactionToEdit: Transaction? = null,
     onDismiss: () -> Unit,
     onConfirm: (
@@ -48,9 +56,11 @@ fun AddEditTransactionDialog(
         amount: Double,
         type: TransactionType,
         note: String,
-        photoUri: Uri?
+        photoUri: Uri?,
+        timestamp: Long
     ) -> Unit
 ) {
+    val context = LocalContext.current
     var selectedCustomer by remember {
         mutableStateOf(
             transactionToEdit?.let { tx -> customers.find { it.id == tx.customerId } }
@@ -60,22 +70,78 @@ fun AddEditTransactionDialog(
     }
 
     var amountText by remember { mutableStateOf(transactionToEdit?.amount?.toString() ?: "") }
-    var type by remember { mutableStateOf(transactionToEdit?.type ?: TransactionType.DEBIT) }
-    var note by remember { mutableStateOf(transactionToEdit?.note ?: "") }
-    var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var type by remember { mutableStateOf(transactionToEdit?.type ?: if (parentTransactionId != null) TransactionType.CREDIT else TransactionType.DEBIT) }
+    var note by remember { mutableStateOf(transactionToEdit?.note ?: if (parentTransactionId != null) "Part Payment" else "") }
+    var timestamp by remember { mutableStateOf(transactionToEdit?.timestamp ?: System.currentTimeMillis()) }
+    val dateTimeFormatter = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
+
+    var photoUri by remember {
+        mutableStateOf<Uri?>(
+            transactionToEdit?.attachmentPath?.let { path ->
+                if (path.startsWith("content://") || path.startsWith("file://") || path.startsWith("http")) Uri.parse(path) else Uri.fromFile(File(path))
+            }
+        )
+    }
     var dropdownExpanded by remember { mutableStateOf(false) }
+    var fullscreenImagePath by remember { mutableStateOf<String?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri -> photoUri = uri }
+    ) { uri ->
+        if (uri != null) {
+            val savedPath = ImageUtils.saveCompressedAttachment(context, uri)
+            if (savedPath != null) {
+                photoUri = Uri.fromFile(File(savedPath))
+            } else {
+                photoUri = uri
+            }
+        }
+    }
+
+    val previewModel: Any? = remember(photoUri, transactionToEdit) {
+        if (photoUri != null) {
+            photoUri
+        } else {
+            g.p.cbb.utils.ImageResolver.resolveImageModel(transactionToEdit?.attachmentPath, transactionToEdit?.driveFileId)
+        }
+    }
 
     val parsedAmount = amountText.toDoubleOrNull() ?: 0.0
+
+    fun showDateTimePicker() {
+        val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                cal.set(Calendar.YEAR, year)
+                cal.set(Calendar.MONTH, month)
+                cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+                android.app.TimePickerDialog(
+                    context,
+                    { _, hourOfDay, minute ->
+                        cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                        cal.set(Calendar.MINUTE, minute)
+                        cal.set(Calendar.SECOND, 0)
+                        cal.set(Calendar.MILLISECOND, 0)
+                        timestamp = cal.timeInMillis
+                    },
+                    cal.get(Calendar.HOUR_OF_DAY),
+                    cal.get(Calendar.MINUTE),
+                    false
+                ).show()
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (transactionToEdit == null) "Add New Transaction" else "Edit Existing Bill",
+                text = if (transactionToEdit == null) (if (parentTransactionId != null) "Record Part Payment" else "Add New Transaction") else "Edit Existing Bill",
                 fontWeight = FontWeight.Bold
             )
         },
@@ -147,6 +213,22 @@ fun AddEditTransactionDialog(
                         }
                     }
                 }
+
+                // Date & Time Picker Field
+                OutlinedTextField(
+                    value = dateTimeFormatter.format(Date(timestamp)),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Date & Time") },
+                    trailingIcon = {
+                        IconButton(onClick = { showDateTimePicker() }) {
+                            Icon(Icons.Default.CalendarToday, contentDescription = "Pick Date & Time", modifier = Modifier.size(20.dp))
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDateTimePicker() }
+                )
 
                 // Amount Field
                 OutlinedTextField(
@@ -250,19 +332,48 @@ fun AddEditTransactionDialog(
                 ) {
                     Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (photoUri == null && transactionToEdit?.driveFileId == null) "Attach Receipt Photo" else "Change Receipt Photo")
+                    Text(if (previewModel == null) "Attach Receipt Photo" else "Change Receipt Photo")
                 }
 
-                if (photoUri != null) {
-                    AsyncImage(
-                        model = photoUri,
-                        contentDescription = "Selected Receipt",
+                if (previewModel != null) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                            .height(130.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.05f))
+                            .clickable { fullscreenImagePath = previewModel.toString() }
+                    ) {
+                        AsyncImage(
+                            model = previewModel,
+                            contentDescription = "Receipt Attachment",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .clickable { fullscreenImagePath = previewModel.toString() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = "Fullscreen",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text("Fullscreen", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -271,7 +382,7 @@ fun AddEditTransactionDialog(
                 onClick = {
                     val cust = selectedCustomer
                     if (cust != null && parsedAmount > 0) {
-                        onConfirm(cust.id, parsedAmount, type, note, photoUri)
+                        onConfirm(cust.id, parsedAmount, type, note, photoUri, timestamp)
                     }
                 },
                 enabled = selectedCustomer != null && parsedAmount > 0,
@@ -286,4 +397,11 @@ fun AddEditTransactionDialog(
             }
         }
     )
+
+    if (fullscreenImagePath != null) {
+        FullScreenImageViewer(
+            imagePath = fullscreenImagePath!!,
+            onDismiss = { fullscreenImagePath = null }
+        )
+    }
 }

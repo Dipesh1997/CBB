@@ -9,7 +9,9 @@ import g.p.cbb.repository.SettingsRepository
 import g.p.cbb.repository.SortOption
 import g.p.cbb.utils.GoogleAuthManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,6 +22,23 @@ class CbbViewModel @Inject constructor(
     private val authManager: GoogleAuthManager,
     private val syncManager: g.p.cbb.utils.CloudSyncManager
 ) : ViewModel() {
+
+    init {
+        startLiveSyncTicker()
+    }
+
+    private fun startLiveSyncTicker() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(20000)
+                try {
+                    syncManager.fullSync()
+                } catch (e: Exception) {
+                    // Silent background live auto-sync
+                }
+            }
+        }
+    }
 
     sealed class SyncEvent {
         data class RequestAuthorization(val intent: android.content.Intent) : SyncEvent()
@@ -135,6 +154,19 @@ class CbbViewModel @Inject constructor(
         }
     }
 
+    private val _lastViewedTxTime = MutableStateFlow(settingsRepository.getLastViewedTransactionsTime())
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val unreadTransactionsCount: StateFlow<Int> = _lastViewedTxTime
+        .flatMapLatest { time -> repository.getUnreadTransactionsCount(time) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, 0)
+
+    fun markTransactionsAsViewed() {
+        val now = System.currentTimeMillis()
+        settingsRepository.saveLastViewedTransactionsTime(now)
+        _lastViewedTxTime.value = now
+    }
+
     fun inviteCollaborator(email: String) {
         viewModelScope.launch {
             syncManager.inviteCollaborator(email)
@@ -180,8 +212,19 @@ class CbbViewModel @Inject constructor(
     private val _selectedCustomer = MutableStateFlow<Customer?>(null)
     val selectedCustomer = _selectedCustomer.asStateFlow()
 
-    private val _transactions = MutableStateFlow<List<Transaction>>(emptyList())
-    val transactions = _transactions.asStateFlow()
+    val transactions: StateFlow<List<Transaction>> = repository.getAllTransactions()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val areNotificationsEnabled = MutableStateFlow(settingsRepository.getNotificationsEnabled())
+
+    fun toggleNotifications(enabled: Boolean) {
+        areNotificationsEnabled.value = enabled
+        settingsRepository.saveNotificationsEnabled(enabled)
+    }
 
     private val _selectedBillPayments = MutableStateFlow<List<Transaction>>(emptyList())
     val selectedBillPayments = _selectedBillPayments.asStateFlow()
@@ -225,11 +268,6 @@ class CbbViewModel @Inject constructor(
 
     fun selectCustomer(customer: Customer) {
         _selectedCustomer.value = customer
-        viewModelScope.launch {
-            repository.getTransactionsForCustomer(customer.id).collect {
-                _transactions.value = it
-            }
-        }
     }
 
     fun addCustomer(name: String, phone: String, address: String) {
@@ -261,10 +299,12 @@ class CbbViewModel @Inject constructor(
         type: TransactionType, 
         note: String, 
         timestamp: Long = System.currentTimeMillis(),
-        attachmentPath: String? = null
+        attachmentPath: String? = null,
+        parentTransactionId: Long? = null
     ) {
         val customer = _selectedCustomer.value ?: return
         viewModelScope.launch {
+            val parentTx = if (parentTransactionId != null) repository.getTransactionById(parentTransactionId) else null
             repository.addTransaction(
                 Transaction(
                     customerId = customer.id,
@@ -272,7 +312,9 @@ class CbbViewModel @Inject constructor(
                     type = type,
                     note = note,
                     timestamp = timestamp,
-                    attachmentPath = attachmentPath
+                    attachmentPath = attachmentPath,
+                    parentTransactionId = parentTransactionId,
+                    parentServerId = parentTx?.serverId
                 ),
                 timestamp
             )
@@ -361,6 +403,32 @@ class CbbViewModel @Inject constructor(
             repository.updateCustomerReminder(customer.id, reminderTime)
             refreshCustomer(customer.id)
             performSync(isManual = false)
+        }
+    }
+
+    val currentSpreadsheetId = MutableStateFlow<String?>(settingsRepository.getSpreadsheetId())
+
+    fun joinAdminDatabase(spreadsheetId: String, onComplete: (Boolean) -> Unit) {
+        val cleanId = spreadsheetId.trim()
+        if (cleanId.isNotBlank()) {
+            settingsRepository.saveSpreadsheetId(cleanId)
+            currentSpreadsheetId.value = cleanId
+            viewModelScope.launch {
+                repository.markAllDataAsUnsynced()
+                performSync(isManual = true)
+                onComplete(true)
+            }
+        } else {
+            onComplete(false)
+        }
+    }
+
+    val tombstones = repository.getAllTombstones().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun restoreTombstone(tombstone: Tombstone) {
+        viewModelScope.launch {
+            repository.restoreTombstone(tombstone)
+            performSync(isManual = true)
         }
     }
 

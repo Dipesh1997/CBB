@@ -13,10 +13,24 @@ object StorageManager {
 
     fun getUdaariRoot(context: Context): File {
         val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-        val udaariRoot = File(publicDocs, ROOT_FOLDER)
-        if (!udaariRoot.exists()) {
-            val created = udaariRoot.mkdirs()
-            android.util.Log.d("StorageManager", "Creating udaari root: $created at ${udaariRoot.absolutePath}")
+        var udaariRoot = File(publicDocs, ROOT_FOLDER)
+        try {
+            if (!udaariRoot.exists()) {
+                val created = udaariRoot.mkdirs()
+                if (!created) {
+                    val appDocs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    udaariRoot = File(appDocs ?: context.filesDir, ROOT_FOLDER)
+                    if (!udaariRoot.exists()) {
+                        udaariRoot.mkdirs()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            val appDocs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            udaariRoot = File(appDocs ?: context.filesDir, ROOT_FOLDER)
+            if (!udaariRoot.exists()) {
+                udaariRoot.mkdirs()
+            }
         }
         return udaariRoot
     }

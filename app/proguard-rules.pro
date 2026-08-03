@@ -1,10 +1,18 @@
-# Add project specific ProGuard rules here.
-# By default, the flags in this file are appended to flags specified
-# in C:\Users\dipes\AppData\Local\Android\Sdk/tools/proguard/proguard-android.txt
-# You can edit the include path and order by changing the proguardFiles
-# directive in build.gradle.
+# Room Entities & DAOs
+-keep class g.p.cbb.data.entity.** { *; }
+-keep class g.p.cbb.data.model.** { *; }
+-keep interface g.p.cbb.data.dao.** { *; }
 
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Gson SerializedName fields
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
 
-# Add any custom rules here that might be necessary for your project.
+# Google API Services & HTTP Client
+-keep class com.google.api.services.** { *; }
+-keep class com.google.api.client.** { *; }
+
+-dontwarn javax.naming.**
+-dontwarn org.ietf.jgss.**
+-dontwarn org.apache.http.**
+-dontwarn com.google.api.client.**

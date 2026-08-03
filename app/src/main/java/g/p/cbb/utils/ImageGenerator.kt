@@ -3,174 +3,250 @@ package g.p.cbb.utils
 import android.content.Context
 import android.content.Intent
 import android.graphics.*
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.entity.Transaction
+import g.p.cbb.data.entity.TransactionType
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 object ImageGenerator {
+
     fun shareBillImage(
         context: Context,
         customer: Customer,
         bill: Transaction,
-        payments: List<Transaction>,
-        attachmentPath: String? = null
+        payments: List<Transaction> = emptyList()
     ) {
-        val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-        val totalPaid = payments.sumOf { it.amount }
-        
-        val width = 600
-        val baseHeight = 700
-        val paymentsHeight = (payments.size * 40)
-        val totalHeight = baseHeight + paymentsHeight
-        
-        val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+                val totalPaid = payments.sumOf { it.amount }
+                val remainingBalance = (bill.amount - totalPaid).coerceAtLeast(0.0)
 
-        // Background and Border
-        canvas.drawColor(Color.WHITE)
-        val borderPaint = Paint().apply {
-            color = Color.LTGRAY
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-        }
-        canvas.drawRect(10f, 10f, width - 10f, totalHeight - 10f, borderPaint)
+                // Load receipt image if available
+                val receiptBitmap = loadReceiptBitmap(context, bill.attachmentPath, bill.driveFileId)
+                var scaledReceipt: Bitmap? = null
+                var receiptHeight = 0
 
-        var y = 80f
-        paint.color = Color.BLACK
-        paint.textSize = 32f
-        paint.isFakeBoldText = true
-        canvas.drawText("CUSTOMER BILL", 200f, y, paint)
-        
-        y += 60f
-        paint.textSize = 24f
-        paint.isFakeBoldText = false
-        canvas.drawText("Customer: ${customer.name}", 40f, y, paint)
-        y += 40f
-        canvas.drawText("Phone: ${customer.phone}", 40f, y, paint)
-        y += 40f
-        canvas.drawText("Bill Date: ${dateFormat.format(Date(bill.timestamp))}", 40f, y, paint)
-        y += 60f
-        
-        // Prominent text
-        paint.color = Color.parseColor("#3F51B5")
-        paint.isFakeBoldText = true
-        paint.textSize = 28f
-        canvas.drawText("BILL TRANSACTION", 40f, y, paint)
-        y += 40f
-        
-        paint.color = Color.BLACK
-        paint.textSize = 32f
-        canvas.drawText("Amount: ₹${"%.2f".format(bill.amount)}", 40f, y, paint)
-        y += 45f
-        
-        if (bill.note.isNotEmpty()) {
-            paint.textSize = 24f
-            paint.isFakeBoldText = false
-            canvas.drawText("Note: ${bill.note}", 40f, y, paint)
-            y += 40f
-        }
-        
-        if (attachmentPath != null) {
-            paint.color = Color.GRAY
-            paint.textSize = 20f
-            canvas.drawText("(Photo Attachment Included)", 40f, y, paint)
-            y += 40f
-        }
-        y += 10f
-        paint.color = Color.BLACK
-        
-        paint.isFakeBoldText = true
-        canvas.drawText("Total Bill Amount:", 40f, y, paint)
-        canvas.drawText("₹${"%.2f".format(bill.amount)}", 480f, y, paint)
-        y += 60f
+                if (receiptBitmap != null) {
+                    val maxPhotoWidth = 520f
+                    val photoScale = maxPhotoWidth / receiptBitmap.width.toFloat()
+                    val targetH = (receiptBitmap.height * photoScale).toInt().coerceIn(150, 550)
+                    scaledReceipt = Bitmap.createScaledBitmap(receiptBitmap, maxPhotoWidth.toInt(), targetH, true)
+                    receiptHeight = targetH + 50
+                }
 
-        if (payments.isNotEmpty()) {
-            paint.color = Color.parseColor("#4CAF50")
-            paint.isFakeBoldText = true
-            canvas.drawText("Received Payments", 40f, y, paint)
-            y += 20f
-            canvas.drawLine(40f, y, 560f, y, paint)
-            y += 40f
-            
-            paint.isFakeBoldText = false
-            paint.textSize = 20f
-            payments.forEach { payment ->
-                canvas.drawText(dateFormat.format(Date(payment.timestamp)), 40f, y, paint)
-                canvas.drawText("₹${"%.2f".format(payment.amount)}", 480f, y, paint)
-                y += 40f
-            }
-            y += 20f
-        }
-        
-        paint.color = Color.BLACK
-        paint.textSize = 24f
-        paint.isFakeBoldText = true
-        canvas.drawText("Total Received:", 40f, y, paint)
-        canvas.drawText("₹${"%.2f".format(totalPaid)}", 480f, y, paint)
-        y += 40f
-        
-        paint.color = Color.parseColor("#F44336")
-        canvas.drawText("Remaining Balance:", 40f, y, paint)
-        canvas.drawText("₹${"%.2f".format(bill.amount - totalPaid)}", 480f, y, paint)
-        
-        // Save Summary Image
-        val cacheFile = File(context.cacheDir, "bill_summary.png")
-        FileOutputStream(cacheFile).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        }
+                val width = 600
+                val headerHeight = 90
+                val customerInfoHeight = 130
+                val billDetailsHeight = 180
+                val paymentsHeight = if (payments.isNotEmpty()) (payments.size * 35) + 80 else 0
+                val footerHeight = 60
+                val totalHeight = headerHeight + customerInfoHeight + billDetailsHeight + paymentsHeight + receiptHeight + footerHeight
 
-        // Save permanent copy in udaari
-        val invoiceFolder = StorageManager.getInvoiceFolder(context)
-        val permFile = File(invoiceFolder, "Invoice_${customer.name}_${System.currentTimeMillis()}.png")
-        FileOutputStream(permFile).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        }
-        android.media.MediaScannerConnection.scanFile(context, arrayOf(permFile.absolutePath), null, null)
+                val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        try {
-            val summaryUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", cacheFile)
-            
-            val uris = arrayListOf<Uri>(summaryUri)
-            attachmentPath?.let { path ->
-                val attachFile = File(path)
-                if (attachFile.exists()) {
-                    try {
-                        uris.add(FileProvider.getUriForFile(context, "${context.packageName}.provider", attachFile))
-                    } catch (e: Exception) {
-                        Log.e("ImageGenerator", "Error getting URI for attachment: ${e.message}")
+                // Background
+                canvas.drawColor(Color.WHITE)
+
+                // Outer Border
+                val borderPaint = Paint().apply {
+                    color = Color.parseColor("#E0E0E0")
+                    style = Paint.Style.STROKE
+                    strokeWidth = 6f
+                }
+                canvas.drawRect(8f, 8f, width - 8f, totalHeight - 8f, borderPaint)
+
+                var y = 0f
+
+                // 1. Dark Header Bar
+                paint.color = Color.parseColor("#1A237E") // Deep Indigo
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(8f, 8f, width - 8f, y + headerHeight, paint)
+
+                paint.color = Color.WHITE
+                paint.textSize = 22f
+                paint.isFakeBoldText = true
+                paint.textAlign = Paint.Align.CENTER
+                canvas.drawText("CUSTOMER BILL STATEMENT", width / 2f, y + 52f, paint)
+                y += headerHeight
+
+                // 2. Customer Info Section
+                y += 25f
+                paint.textAlign = Paint.Align.LEFT
+                paint.color = Color.parseColor("#333333")
+                paint.textSize = 17f
+                paint.isFakeBoldText = true
+                canvas.drawText("Customer: ${customer.name}", 35f, y, paint)
+                y += 26f
+
+                paint.textSize = 14f
+                paint.isFakeBoldText = false
+                paint.color = Color.parseColor("#666666")
+                canvas.drawText("Phone: ${if (customer.phone.isNotBlank()) customer.phone else "N/A"}", 35f, y, paint)
+                y += 24f
+
+                canvas.drawText("Date & Time: ${dateFormat.format(Date(bill.timestamp))}", 35f, y, paint)
+                y += 30f
+
+                // Divider line
+                paint.color = Color.parseColor("#E0E0E0")
+                paint.strokeWidth = 2f
+                canvas.drawLine(35f, y, width - 35f, y, paint)
+                y += 25f
+
+                // 3. Bill Transaction Box
+                val isDebit = bill.type == TransactionType.DEBIT
+                val badgeColor = if (isDebit) Color.parseColor("#B71C1C") else Color.parseColor("#1B5E20")
+                val badgeBg = if (isDebit) Color.parseColor("#FFEBEE") else Color.parseColor("#E8F5E9")
+
+                paint.color = badgeBg
+                paint.style = Paint.Style.FILL
+                canvas.drawRoundRect(35f, y, width - 35f, y + 130f, 12f, 12f, paint)
+
+                paint.color = badgeColor
+                paint.textSize = 15f
+                paint.isFakeBoldText = true
+                canvas.drawText(if (isDebit) "YOU GAVE (DEBIT BILL)" else "YOU GOT (CREDIT PAYMENT)", 55f, y + 35f, paint)
+
+                paint.textSize = 28f
+                paint.isFakeBoldText = true
+                canvas.drawText("₹${"%.2f".format(bill.amount)}", 55f, y + 75f, paint)
+
+                if (bill.note.isNotBlank()) {
+                    paint.textSize = 14f
+                    paint.isFakeBoldText = false
+                    paint.color = Color.parseColor("#444444")
+                    val truncatedNote = if (bill.note.length > 40) bill.note.take(37) + "..." else bill.note
+                    canvas.drawText("Note: $truncatedNote", 55f, y + 105f, paint)
+                }
+
+                y += 150f
+
+                // 4. Linked Part Payments Breakdown (if any)
+                if (payments.isNotEmpty()) {
+                    paint.color = Color.parseColor("#2E7D32")
+                    paint.textSize = 15f
+                    paint.isFakeBoldText = true
+                    canvas.drawText("Part Payments Received (${payments.size})", 35f, y, paint)
+                    y += 15f
+
+                    paint.color = Color.parseColor("#C8E6C9")
+                    canvas.drawRect(35f, y, width - 35f, y + 2f, paint)
+                    y += 22f
+
+                    paint.isFakeBoldText = false
+                    paint.textSize = 13f
+                    paint.color = Color.parseColor("#333333")
+
+                    payments.forEach { p ->
+                        canvas.drawText(dateFormat.format(Date(p.timestamp)), 35f, y, paint)
+                        canvas.drawText("₹${"%.2f".format(p.amount)}", width - 150f, y, paint)
+                        y += 30f
                     }
+
+                    y += 10f
+                    paint.isFakeBoldText = true
+                    paint.textSize = 14f
+                    canvas.drawText("Total Received: ₹${"%.2f".format(totalPaid)}", 35f, y, paint)
+                    canvas.drawText("Remaining: ₹${"%.2f".format(remainingBalance)}", width - 200f, y, paint)
+                    y += 30f
+
+                    paint.color = Color.parseColor("#E0E0E0")
+                    canvas.drawLine(35f, y, width - 35f, y, paint)
+                    y += 25f
+                }
+
+                // 5. Embedded Receipt Photo
+                if (scaledReceipt != null) {
+                    paint.color = Color.parseColor("#333333")
+                    paint.textSize = 14f
+                    paint.isFakeBoldText = true
+                    canvas.drawText("Attached Receipt Photo:", 35f, y, paint)
+                    y += 20f
+
+                    canvas.drawBitmap(scaledReceipt, 40f, y, paint)
+                    y += scaledReceipt.height + 25f
+                }
+
+                // 6. Footer Branding
+                paint.color = Color.parseColor("#757575")
+                paint.textSize = 12f
+                paint.isFakeBoldText = false
+                paint.textAlign = Paint.Align.CENTER
+                canvas.drawText("Generated via Udaari App • Customer Ledger Record", width / 2f, y + 20f, paint)
+
+                // Save image to files
+                val timestampStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val cleanName = customer.name.replace("\\s+".toRegex(), "_")
+                val fileName = "Bill_${cleanName}_tx${bill.id}_${timestampStr}.png"
+
+                // App Statements folder
+                val appFile = File(StorageManager.getInvoiceFolder(context), fileName)
+                FileOutputStream(appFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
+
+                // Downloads directory
+                val downloadsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "udaari/bills")
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val downloadsFile = File(downloadsDir, fileName)
+                try {
+                    FileOutputStream(downloadsFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
+                } catch (e: Exception) {
+                    Log.w("ImageGenerator", "Could not write to Downloads: ${e.message}")
+                }
+
+                // Pictures directory
+                val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "udaari/bills")
+                if (!picturesDir.exists()) picturesDir.mkdirs()
+                val picturesFile = File(picturesDir, fileName)
+                try {
+                    FileOutputStream(picturesFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
+                } catch (e: Exception) {
+                    Log.w("ImageGenerator", "Could not write to Pictures: ${e.message}")
+                }
+
+                // Scan files for Gallery / File Manager visibility
+                val pathsToScan = arrayOf(appFile.absolutePath, downloadsFile.absolutePath, picturesFile.absolutePath)
+                MediaScannerConnection.scanFile(context, pathsToScan, null, null)
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Bill Image saved to Downloads & Gallery", Toast.LENGTH_LONG).show()
+
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", appFile)
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Bill Image via"))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error generating bill image: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                 }
             }
-
-            val toast = Toast.makeText(context, "Bill Saved to gallery", Toast.LENGTH_SHORT)
-            toast.setGravity(Gravity.TOP, 0, 100)
-            toast.show()
-
-            val intent = if (uris.size > 1) {
-                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                    type = "image/*"
-                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-                }
-            } else {
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "image/png"
-                    putExtra(Intent.EXTRA_STREAM, summaryUri)
-                }
-            }
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(Intent.createChooser(intent, "Share Bill"))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Sharing failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun loadReceiptBitmap(context: Context, path: String?, driveFileId: String?): Bitmap? {
+        return ImageResolver.loadBitmap(context, path, driveFileId)
     }
 }

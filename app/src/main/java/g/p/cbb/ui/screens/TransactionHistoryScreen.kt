@@ -1,6 +1,7 @@
 package g.p.cbb.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,8 +26,10 @@ import g.p.cbb.data.entity.Transaction
 import g.p.cbb.data.entity.TransactionType
 import g.p.cbb.ui.components.AddEditTransactionDialog
 import g.p.cbb.ui.components.ConfirmDeleteDialog
+import g.p.cbb.ui.components.FullScreenImageViewer
 import g.p.cbb.ui.components.SyncStatusBadge
 import g.p.cbb.viewmodel.CbbViewModel
+import java.io.File
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -39,15 +42,21 @@ fun TransactionHistoryScreen(
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val transactions by viewModel.transactions.collectAsState()
+    val unreadTxCount by viewModel.unreadTransactionsCount.collectAsState(initial = 0)
     val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
+    var previewImagePath by remember { mutableStateOf<String?>(null) }
 
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
     val dateFormatter = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+
+    LaunchedEffect(Unit) {
+        viewModel.markTransactionsAsViewed()
+    }
 
     val filteredTransactions = transactions.filter { tx ->
         val cust = customers.find { it.id == tx.customerId }
@@ -55,19 +64,73 @@ fun TransactionHistoryScreen(
         custName.contains(searchQuery, ignoreCase = true) || tx.note.contains(searchQuery, ignoreCase = true)
     }.sortedByDescending { it.timestamp }
 
+    val notificationsEnabled by viewModel.areNotificationsEnabled.collectAsState()
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Transaction History", fontWeight = FontWeight.Bold) },
-                actions = {
-                    SyncStatusBadge(
-                        isSyncing = false,
-                        isError = false,
-                        lastSyncText = "Live Auto-Sync",
-                        onManualSync = { viewModel.syncNow() }
-                    )
+            Column {
+                TopAppBar(
+                    title = { Text("Transaction History", fontWeight = FontWeight.Bold) },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                val newState = !notificationsEnabled
+                                viewModel.toggleNotifications(newState)
+                                val msg = if (newState) "System notifications enabled" else "System notifications stopped"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (notificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                                contentDescription = "Toggle Notifications",
+                                tint = if (notificationsEnabled) MaterialTheme.colorScheme.primary else Color.Gray
+                            )
+                        }
+                        SyncStatusBadge(
+                            isSyncing = false,
+                            isError = false,
+                            lastSyncText = "Live Auto-Sync",
+                            onManualSync = { viewModel.syncNow() }
+                        )
+                    }
+                )
+                if (unreadTxCount > 0) {
+                    Surface(
+                        color = Color(0xFFE3F2FD),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF0288D1), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "✨ $unreadTxCount new update(s)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0288D1)
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewModel.markTransactionsAsViewed() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.DoneAll, contentDescription = "Mark Read", modifier = Modifier.size(16.dp), tint = Color(0xFF0288D1))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Mark Read", fontSize = 12.sp, color = Color(0xFF0288D1), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -106,7 +169,9 @@ fun TransactionHistoryScreen(
                     val cust = customers.find { it.id == tx.customerId }
 
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { transactionToEdit = tx },
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                         shape = RoundedCornerShape(12.dp)
@@ -168,15 +233,42 @@ fun TransactionHistoryScreen(
                                 }
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    if (tx.attachmentPath != null || tx.driveFileId != null) {
-                                        val imageUrl = tx.attachmentPath ?: "https://drive.google.com/thumbnail?id=${tx.driveFileId}&sz=w200"
+                                     val imageModel: Any? = remember(tx.attachmentPath, tx.driveFileId) {
+                                         g.p.cbb.utils.ImageResolver.resolveImageModel(tx.attachmentPath, tx.driveFileId)
+                                     }
+
+                                    if (imageModel != null) {
                                         AsyncImage(
-                                            model = imageUrl,
+                                            model = imageModel,
                                             contentDescription = "Receipt",
                                             modifier = Modifier
                                                 .size(28.dp)
-                                                .clip(RoundedCornerShape(4.dp)),
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .clickable { previewImagePath = imageModel.toString() },
                                             contentScale = ContentScale.Crop
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            val cust = customers.find { it.id == tx.customerId }
+                                             if (cust != null) {
+                                                 val linkedPayments = transactions.filter { it.parentTransactionId == tx.id }
+                                                 g.p.cbb.utils.ImageGenerator.shareBillImage(
+                                                     context = context,
+                                                     customer = cust,
+                                                     bill = tx,
+                                                     payments = linkedPayments
+                                                 )
+                                             }
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = "Share Bill Image",
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
 
@@ -211,19 +303,22 @@ fun TransactionHistoryScreen(
                 showAddDialog = false
                 transactionToEdit = null
             },
-            onConfirm = { customerId, amount, type, note, photoUri ->
+            onConfirm = { customerId, amount, type, note, photoUri, timestamp ->
                 if (transactionToEdit == null) {
                     val cust = customers.find { it.id == customerId }
                     if (cust != null) {
+                        val permanentPath = g.p.cbb.utils.ImageUtils.ensurePermanentLocalPath(context, photoUri?.toString())
                         viewModel.selectCustomer(cust)
                         viewModel.addTransaction(
                             amount = amount,
                             type = type,
                             note = note,
-                            attachmentPath = photoUri?.toString()
+                            timestamp = timestamp,
+                            attachmentPath = permanentPath
                         )
                     }
                 } else {
+                    val permanentPath = g.p.cbb.utils.ImageUtils.ensurePermanentLocalPath(context, photoUri?.toString() ?: transactionToEdit!!.attachmentPath)
                     viewModel.updateTransaction(
                         oldTransaction = transactionToEdit!!,
                         newTransaction = transactionToEdit!!.copy(
@@ -231,7 +326,8 @@ fun TransactionHistoryScreen(
                             amount = amount,
                             type = type,
                             note = note,
-                            attachmentPath = photoUri?.toString() ?: transactionToEdit!!.attachmentPath
+                            timestamp = timestamp,
+                            attachmentPath = permanentPath
                         )
                     )
                 }
@@ -253,4 +349,12 @@ fun TransactionHistoryScreen(
             }
         )
     }
+
+    if (previewImagePath != null) {
+        FullScreenImageViewer(
+            imagePath = previewImagePath!!,
+            onDismiss = { previewImagePath = null }
+        )
+    }
 }
+

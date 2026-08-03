@@ -12,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Receipt
@@ -74,6 +75,7 @@ class MainActivity : ComponentActivity() {
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Transactions : Screen("transactions", "Transactions", Icons.Default.Receipt)
+    object Collaboration : Screen("collaboration", "Team Collab", Icons.Default.Group)
     object History : Screen("history", "Audit Log", Icons.Default.History)
 }
 
@@ -84,16 +86,13 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val unreadCount by viewModel.unreadHistoryCount.collectAsState(initial = 0)
+    val unreadTxCount by viewModel.unreadTransactionsCount.collectAsState(initial = 0)
     val selectedCustomer by viewModel.selectedCustomer.collectAsState()
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            viewModel.syncNow()
-        } else {
-            android.widget.Toast.makeText(context, "Account permission is required for Cloud Sync", android.widget.Toast.LENGTH_LONG).show()
-        }
+    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        viewModel.syncNow()
     }
 
     val authLauncher = rememberLauncherForActivityResult(
@@ -115,8 +114,27 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
     var syncErrorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(Manifest.permission.GET_ACCOUNTS)
+        val permissions = mutableListOf(
+            Manifest.permission.GET_ACCOUNTS,
+            Manifest.permission.CAMERA
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                permissions.add("android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
+            }
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            multiplePermissionsLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -149,7 +167,7 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
                     val message = event.message
                     if (message.contains("name must not be empty", ignoreCase = true)) {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
-                            permissionLauncher.launch(Manifest.permission.GET_ACCOUNTS)
+                            multiplePermissionsLauncher.launch(arrayOf(Manifest.permission.GET_ACCOUNTS))
                         } else {
                             syncErrorMessage = "Google account not found on device. Please sign in to Google in your device settings."
                         }
@@ -181,6 +199,7 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
     val items = listOf(
         Screen.Home,
         Screen.Transactions,
+        Screen.Collaboration,
         Screen.History
     )
 
@@ -195,7 +214,9 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
                         icon = {
                             BadgedBox(
                                 badge = {
-                                    if (screen == Screen.History && unreadCount > 0) {
+                                    if (screen == Screen.Transactions && unreadTxCount > 0) {
+                                        Badge { Text(unreadTxCount.toString()) }
+                                    } else if (screen == Screen.History && unreadCount > 0) {
                                         Badge { Text(unreadCount.toString()) }
                                     }
                                 }
@@ -237,6 +258,9 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
                     },
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
+                    },
+                    onNavigateToCollaboration = {
+                        navController.navigate(Screen.Collaboration.route)
                     }
                 )
             }
@@ -248,6 +272,9 @@ fun CbbApp(viewModel: CbbViewModel = hiltViewModel()) {
                         navController.navigate("detail")
                     }
                 )
+            }
+            composable(Screen.Collaboration.route) {
+                CollaborationScreen(viewModel = viewModel)
             }
             composable(Screen.History.route) {
                 ActivityHistoryScreen(

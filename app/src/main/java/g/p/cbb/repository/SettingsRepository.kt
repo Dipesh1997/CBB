@@ -24,8 +24,8 @@ class SettingsRepository @Inject constructor(
         prefs.edit().putString("sort_option", option.name).apply()
     }
 
-    fun getSpreadsheetId(): String? = "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58"
-    fun saveSpreadsheetId(id: String) = prefs.edit().putString("spreadsheet_id", id).apply()
+    fun getSpreadsheetId(): String? = prefs.getString("spreadsheet_id", "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58")
+    fun saveSpreadsheetId(id: String) = prefs.edit().putString("spreadsheet_id", id.trim()).apply()
 
     fun getDriveFolderId(): String? = prefs.getString("drive_folder_id", null)
     fun saveDriveFolderId(id: String) = prefs.edit().putString("drive_folder_id", id).apply()
@@ -38,6 +38,12 @@ class SettingsRepository @Inject constructor(
 
     fun getAccessToken(): String? = prefs.getString("access_token", null)
     fun saveAccessToken(token: String?) = prefs.edit().putString("access_token", token).apply()
+
+    fun getLastViewedTransactionsTime(): Long = prefs.getLong("last_viewed_transactions_time", 0L)
+    fun saveLastViewedTransactionsTime(time: Long) = prefs.edit().putLong("last_viewed_transactions_time", time).apply()
+
+    fun getNotificationsEnabled(): Boolean = prefs.getBoolean("notifications_enabled", true)
+    fun saveNotificationsEnabled(enabled: Boolean) = prefs.edit().putBoolean("notifications_enabled", enabled).apply()
 }
 
 enum class SortOption {

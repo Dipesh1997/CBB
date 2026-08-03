@@ -34,7 +34,8 @@ class CloudSyncManager @Inject constructor(
     private val transactionDao: TransactionDao,
     private val authManager: GoogleAuthManager,
     private val tombstoneDao: TombstoneDao,
-    private val activityLogDao: ActivityLogDao
+    private val activityLogDao: ActivityLogDao,
+    private val settingsRepository: g.p.cbb.repository.SettingsRepository
 ) {
     private val transport = NetHttpTransport()
     private val jsonFactory = GsonFactory.getDefaultInstance()
@@ -126,9 +127,18 @@ class CloudSyncManager @Inject constructor(
 
                 // Pull phase
                 val pulledCustomers = pullCustomers(sheets, spreadsheetId)
-                val pulledTransactions = pullTransactions(sheets, spreadsheetId)
+                val pulledTransactions = pullTransactions(sheets, spreadsheetId, drive)
+                val pulledTrash = pullTombstones(sheets, spreadsheetId)
                 
-                Log.i("CloudSync", "Sync Completed: $pulledCustomers customers, $pulledTransactions transactions pulled for $email")
+                if (pulledTransactions > 0 || pulledCustomers > 0) {
+                    NotificationHelper.showSyncUpdateNotification(
+                        context,
+                        "Udaari Ledger: Database Updated",
+                        "Synced $pulledTransactions transaction(s) and $pulledCustomers customer(s) from team sync."
+                    )
+                }
+
+                Log.i("CloudSync", "Sync Completed: $pulledCustomers customers, $pulledTransactions transactions, $pulledTrash trash items pulled for $email")
             } catch (e: UserRecoverableAuthIOException) {
                 throw e
             } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException) {
@@ -338,7 +348,7 @@ class CloudSyncManager @Inject constructor(
         return count
     }
 
-    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String): Int {
+    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String, drive: Drive): Int {
         val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
@@ -365,6 +375,28 @@ class CloudSyncManager @Inject constructor(
             val sid = row.getOrNull(12)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "tx_$txIdStr"
 
             val local = transactionDao.getTransactionByServerId(sid)
+
+            var localAttachmentPath = local?.attachmentPath
+            val localFileExists = ImageResolver.getLocalFile(localAttachmentPath) != null
+            if (!localFileExists && !driveFileId.isNullOrEmpty()) {
+                try {
+                    val attachmentFolder = StorageManager.getAttachmentFolder(context)
+                    val targetFile = java.io.File(attachmentFolder, "receipt_${driveFileId.trim()}.jpg")
+                    if (!targetFile.exists() || targetFile.length() == 0L) {
+                        val outputStream = java.io.FileOutputStream(targetFile)
+                        drive.files().get(driveFileId.trim()).executeMediaAndDownloadTo(outputStream)
+                        outputStream.close()
+                    }
+                    if (targetFile.exists() && targetFile.length() > 0) {
+                        localAttachmentPath = targetFile.absolutePath
+                    }
+                } catch (e: Exception) {
+                    Log.w("CloudSync", "Failed to download receipt image $driveFileId: ${e.message}")
+                }
+            }
+
+            val parentTx = parentServerId?.let { transactionDao.getTransactionByServerId(it) }
+
             val tx = Transaction(
                 id = local?.id ?: 0,
                 customerId = cust.id,
@@ -372,12 +404,13 @@ class CloudSyncManager @Inject constructor(
                 type = type,
                 timestamp = timestamp,
                 note = note,
-                attachmentPath = null,
+                attachmentPath = localAttachmentPath,
                 createdBy = createdBy,
                 lastUpdated = last,
                 syncStatus = 0,
                 serverId = sid,
                 driveFileId = driveFileId,
+                parentTransactionId = parentTx?.id ?: local?.parentTransactionId,
                 parentServerId = parentServerId
             )
             transactionDao.insertTransaction(tx)
@@ -386,8 +419,64 @@ class CloudSyncManager @Inject constructor(
         return count
     }
 
+    private suspend fun pullTombstones(sheets: Sheets, spreadsheetId: String): Int {
+        val rawValues = try {
+            sheets.spreadsheets().values().get(spreadsheetId, "Trash!A:Z").execute().getValues()
+        } catch (e: Exception) {
+            null
+        } ?: return 0
+
+        if (rawValues.size <= 1) return 0
+        val rows = rawValues.drop(1)
+        var count = 0
+        rows.forEach { row ->
+            if (row.size < 3) return@forEach
+            val summary = row.getOrNull(0)?.toString()?.trim() ?: ""
+            val tableName = row.getOrNull(1)?.toString()?.trim() ?: ""
+            val serverId = row.getOrNull(2)?.toString()?.trim() ?: ""
+            val timestamp = row.getOrNull(3)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
+            val contentJson = row.getOrNull(4)?.toString() ?: ""
+
+            if (serverId.isEmpty() || tableName.isEmpty()) return@forEach
+
+            val existingTombstone = tombstoneDao.getTombstoneByServerId(serverId)
+            if (existingTombstone == null) {
+                tombstoneDao.insertTombstone(
+                    Tombstone(
+                        tableName = tableName,
+                        originalServerId = serverId,
+                        summary = summary,
+                        contentJson = contentJson,
+                        timestamp = timestamp,
+                        syncStatus = 0
+                    )
+                )
+            }
+
+            // Delete from local DB if still present
+            if (tableName == "transactions") {
+                val localTx = transactionDao.getTransactionByServerId(serverId)
+                if (localTx != null) {
+                    val reverseAmount = if (localTx.type == TransactionType.CREDIT) localTx.amount else -localTx.amount
+                    customerDao.updateBalance(localTx.customerId, reverseAmount, System.currentTimeMillis())
+                    transactionDao.deleteTransaction(localTx)
+                    count++
+                }
+            } else if (tableName == "customers") {
+                val localCust = customerDao.getCustomerByServerId(serverId)
+                if (localCust != null) {
+                    customerDao.deleteCustomer(localCust)
+                    count++
+                }
+            }
+        }
+        return count
+    }
+
     suspend fun inviteCollaborator(email: String) = withContext(Dispatchers.IO) {
-        val drive = getDriveService(authManager.userEmail.value ?: return@withContext)
-        GoogleDriveHelper.shareWithUser(drive, FIXED_SPREADSHEET_ID, email)
+        val emailAddr = authManager.userEmail.value ?: return@withContext
+        val drive = getDriveService(emailAddr)
+        val targetSheetId = settingsRepository.getSpreadsheetId() ?: FIXED_SPREADSHEET_ID
+        GoogleDriveHelper.shareWithUser(drive, targetSheetId, email)
     }
 }

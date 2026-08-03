@@ -7,11 +7,17 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import g.p.cbb.data.entity.Customer
 import g.p.cbb.data.model.TransactionWithDetails
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -29,51 +35,77 @@ object PdfGenerator {
         context: Context,
         customer: Customer,
         transactions: List<TransactionWithDetails>,
-        detailLevel: PdfDetailLevel = PdfDetailLevel.SUMMARY
+        detailLevel: PdfDetailLevel = PdfDetailLevel.DETAILED,
+        startDate: Long? = null,
+        endDate: Long? = null
     ) {
-        val pdfDocument = PdfDocument()
-        val paint = Paint()
-        var pageNumber = 1
-        val currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
-        val canvas = currentPage.canvas
-        var y = MARGIN
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val filteredTransactions = transactions.filter { item ->
+                    val ts = item.transaction.timestamp
+                    val afterStart = startDate == null || ts >= startDate
+                    val beforeEnd = endDate == null || ts <= endDate
+                    afterStart && beforeEnd
+                }.sortedByDescending { it.transaction.timestamp }
 
-        // Title
-        paint.textSize = 20f
-        paint.isFakeBoldText = true
-        canvas.drawText("Customer Ledger Report", 180f, y, paint)
-        y += 40f
+                val pdfDocument = PdfDocument()
+                val paint = Paint()
+                var pageNumber = 1
+                var currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+                var canvas = currentPage.canvas
+                var y = MARGIN + 20f
 
-        // Customer Info
-        paint.textSize = 14f
-        paint.isFakeBoldText = false
-        canvas.drawText("Name: ${customer.name}", MARGIN, y, paint)
-        y += 20f
-        canvas.drawText("Phone: ${customer.phone}", MARGIN, y, paint)
-        y += 20f
-        canvas.drawText("Current Balance: ₹${"%.2f".format(customer.totalBalance)}", MARGIN, y, paint)
-        y += 40f
+                // Centered Title
+                paint.textSize = 20f
+                paint.isFakeBoldText = true
+                paint.color = Color.BLACK
+                paint.textAlign = Paint.Align.CENTER
+                canvas.drawText("Customer Ledger Report", PAGE_WIDTH / 2f, y, paint)
+                y += 40f
 
-        if (detailLevel == PdfDetailLevel.SUMMARY) {
-            drawSummaryTable(pdfDocument, currentPage, canvas, paint, transactions, y)
-        } else {
-            drawDetailedList(pdfDocument, currentPage, canvas, paint, transactions, y)
+                // Customer Info
+                paint.textAlign = Paint.Align.LEFT
+                paint.textSize = 13f
+                paint.isFakeBoldText = false
+                canvas.drawText("Name: ${customer.name}", MARGIN, y, paint)
+                y += 20f
+                canvas.drawText("Phone: ${customer.phone}", MARGIN, y, paint)
+                y += 20f
+                canvas.drawText("Current Balance: ₹${"%.2f".format(customer.totalBalance)}", MARGIN, y, paint)
+                y += 20f
+
+                if (startDate != null && endDate != null) {
+                    val rangeFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    canvas.drawText("Date Range: ${rangeFormat.format(Date(startDate))} - ${rangeFormat.format(Date(endDate))}", MARGIN, y, paint)
+                    y += 20f
+                }
+                y += 20f
+
+                if (detailLevel == PdfDetailLevel.SUMMARY) {
+                    drawSummaryTable(pdfDocument, currentPage, canvas, paint, filteredTransactions, y)
+                } else {
+                    drawDetailedList(context, pdfDocument, currentPage, canvas, paint, filteredTransactions, y)
+                }
+
+                val fileName = "Statement_${customer.name.replace("\\s+".toRegex(), "_")}_${System.currentTimeMillis()}.pdf"
+                val statementFolder = StorageManager.getStatementFolder(context)
+                val file = File(statementFolder, fileName)
+
+                pdfDocument.writeTo(FileOutputStream(file))
+                pdfDocument.close()
+
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "Statement Saved: Documents/udaari/statements", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "Error generating PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
-
-        val fileName = "Statement_${customer.name}_${System.currentTimeMillis()}.pdf"
-        val statementFolder = StorageManager.getStatementFolder(context)
-        val file = File(statementFolder, fileName)
-
-        try {
-            pdfDocument.writeTo(FileOutputStream(file))
-            android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
-            Toast.makeText(context, "Statement Saved: Documents/udaari/statements", Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Error generating PDF", Toast.LENGTH_SHORT).show()
-        }
-
-        pdfDocument.close()
     }
 
     private fun drawSummaryTable(
@@ -92,6 +124,7 @@ object PdfGenerator {
         // Table Header
         paint.isFakeBoldText = true
         paint.textSize = 12f
+        paint.textAlign = Paint.Align.LEFT
         canvas.drawText("Date", MARGIN, y, paint)
         canvas.drawText("Note", 140f, y, paint)
         canvas.drawText("Type", 380f, y, paint)
@@ -103,16 +136,16 @@ object PdfGenerator {
         // Table Content
         paint.isFakeBoldText = false
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        
+
         transactions.forEach { item ->
             val transaction = item.transaction
-            if (y > PAGE_HEIGHT - MARGIN) {
+            if (y > PAGE_HEIGHT - MARGIN - 30f) {
                 pdfDocument.finishPage(currentPage)
                 pageNumber++
                 currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
                 canvas = currentPage.canvas
-                y = MARGIN
-                
+                y = MARGIN + 20f
+
                 // Redraw Header on new page
                 paint.isFakeBoldText = true
                 canvas.drawText("Date", MARGIN, y, paint)
@@ -136,6 +169,7 @@ object PdfGenerator {
     }
 
     private fun drawDetailedList(
+        context: Context,
         pdfDocument: PdfDocument,
         initialPage: PdfDocument.Page,
         initialCanvas: Canvas,
@@ -151,65 +185,90 @@ object PdfGenerator {
 
         transactions.forEach { item ->
             val transaction = item.transaction
-            
-            // Check if we need a new page for the transaction header
-            if (y > PAGE_HEIGHT - 150f) {
+
+            // Check if we need a new page for the transaction block
+            if (y > PAGE_HEIGHT - 120f) {
                 pdfDocument.finishPage(currentPage)
                 pageNumber++
                 currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
                 canvas = currentPage.canvas
-                y = MARGIN
+                y = MARGIN + 20f
             }
 
-            // Transaction Header
-            paint.isFakeBoldText = true
-            paint.textSize = 14f
-            paint.color = Color.DKGRAY
-            canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + 30f, paint)
-            paint.color = Color.WHITE
-            canvas.drawText("${transaction.type} - ${dateFormat.format(Date(transaction.timestamp))}", MARGIN + 10f, y + 20f, paint)
-            paint.color = Color.BLACK
-            y += 50f
+            // Dark Transaction Header Rect
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#333333")
+            canvas.drawRect(MARGIN, y, PAGE_WIDTH - MARGIN, y + 28f, paint)
 
+            // Header Text in White
+            paint.color = Color.WHITE
+            paint.isFakeBoldText = true
+            paint.textSize = 13f
+            paint.textAlign = Paint.Align.LEFT
+            canvas.drawText("${transaction.type.name} - ${dateFormat.format(Date(transaction.timestamp))}", MARGIN + 10f, y + 19f, paint)
+            paint.color = Color.BLACK
+            y += 45f
+
+            // Transaction Details
             paint.textSize = 12f
             paint.isFakeBoldText = false
             canvas.drawText("Amount: ₹${"%.2f".format(transaction.amount)}", MARGIN, y, paint)
             y += 20f
-            if (transaction.note.isNotEmpty()) {
+
+            if (transaction.note.isNotBlank()) {
                 canvas.drawText("Note: ${transaction.note}", MARGIN, y, paint)
                 y += 20f
             }
 
             // Draw Image Attachment
-            transaction.attachmentPath?.let { path ->
-                val file = File(path)
-                if (file.exists()) {
-                    if (y > PAGE_HEIGHT - 250f) {
-                        pdfDocument.finishPage(currentPage)
-                        pageNumber++
-                        currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
-                        canvas = currentPage.canvas
-                        y = MARGIN
-                    }
-                    
-                    try {
-                        val bitmap = BitmapFactory.decodeFile(path)
-                        if (bitmap != null) {
-                            val scaledBitmap = scaleBitmap(bitmap, PAGE_WIDTH - (MARGIN * 2).toInt(), 200)
-                            canvas.drawBitmap(scaledBitmap, MARGIN, y, paint)
-                            y += scaledBitmap.height + 20f
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+            val bitmap = loadTransactionBitmap(context, transaction.attachmentPath, transaction.driveFileId)
+            if (bitmap != null) {
+                val scaledBitmap = scaleBitmap(bitmap, (PAGE_WIDTH - MARGIN * 2).toInt(), 260)
+                if (y + scaledBitmap.height > PAGE_HEIGHT - MARGIN - 20f) {
+                    pdfDocument.finishPage(currentPage)
+                    pageNumber++
+                    currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+                    canvas = currentPage.canvas
+                    y = MARGIN + 20f
                 }
+
+                canvas.drawBitmap(scaledBitmap, MARGIN, y, paint)
+                y += scaledBitmap.height + 20f
             }
 
-            y += 30f // Spacing between transactions
-            canvas.drawLine(MARGIN, y - 15f, PAGE_WIDTH - MARGIN, y - 15f, paint)
+            // Divider Line
             y += 10f
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1f
+            paint.color = Color.LTGRAY
+            canvas.drawLine(MARGIN, y, PAGE_WIDTH - MARGIN, y, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.BLACK
+            y += 25f
         }
         pdfDocument.finishPage(currentPage)
+    }
+
+    private fun loadTransactionBitmap(context: Context, path: String?, driveFileId: String?): Bitmap? {
+        if (!path.isNullOrBlank()) {
+            val bitmap = loadBitmapFromPath(context, path)
+            if (bitmap != null) return bitmap
+        }
+
+        if (!driveFileId.isNullOrBlank()) {
+            val driveUrl1 = "https://lh3.googleusercontent.com/d/${driveFileId.trim()}=w800"
+            val bitmap1 = loadBitmapFromPath(context, driveUrl1)
+            if (bitmap1 != null) return bitmap1
+
+            val driveUrl2 = "https://drive.google.com/thumbnail?id=${driveFileId.trim()}&sz=w800"
+            return loadBitmapFromPath(context, driveUrl2)
+        }
+
+        return null
+    }
+
+    private fun loadBitmapFromPath(context: Context, path: String): Bitmap? {
+        return ImageResolver.loadBitmap(context, path, null)
     }
 
     private fun scaleBitmap(source: Bitmap, maxWidth: Int, maxHeight: Int): Bitmap {
@@ -230,3 +289,4 @@ object PdfGenerator {
         return Bitmap.createScaledBitmap(source, width, height, true)
     }
 }
+

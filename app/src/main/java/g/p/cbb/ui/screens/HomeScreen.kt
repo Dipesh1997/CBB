@@ -30,7 +30,8 @@ import java.util.Locale
 fun HomeScreen(
     viewModel: CbbViewModel,
     onCustomerClick: (Customer) -> Unit,
-    onNavigateToHistory: () -> Unit
+    onNavigateToHistory: () -> Unit,
+    onNavigateToCollaboration: () -> Unit = {}
 ) {
     val customers by viewModel.customers.collectAsState(initial = emptyList())
     val userEmail by viewModel.userEmail.collectAsState()
@@ -117,6 +118,9 @@ fun HomeScreen(
                             }
                         }
                     )
+                    IconButton(onClick = onNavigateToCollaboration) {
+                        Icon(Icons.Default.Group, contentDescription = "Team Collaboration & Invites", tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Default.History, contentDescription = "Activity Log")
                     }

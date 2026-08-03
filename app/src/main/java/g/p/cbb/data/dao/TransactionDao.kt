@@ -40,4 +40,10 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions WHERE serverId = :serverId LIMIT 1")
     suspend fun getTransactionByServerId(serverId: String): Transaction?
+
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
+    fun getAllTransactions(): Flow<List<Transaction>>
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE lastUpdated > :lastViewedTime")
+    fun getUnreadTransactionsCount(lastViewedTime: Long): Flow<Int>
 }

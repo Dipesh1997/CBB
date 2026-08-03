@@ -1,6 +1,7 @@
 package g.p.cbb.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,7 +31,9 @@ import g.p.cbb.ui.components.*
 import g.p.cbb.ui.theme.*
 import g.p.cbb.utils.PdfDetailLevel
 import g.p.cbb.utils.PdfGenerator
+import g.p.cbb.utils.ReminderManager
 import g.p.cbb.viewmodel.CbbViewModel
+import java.io.File
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -43,11 +46,17 @@ fun CustomerDetailScreen(
     onBack: () -> Unit
 ) {
     val transactions by viewModel.transactions.collectAsState()
+    val selectedCustomerState by viewModel.selectedCustomer.collectAsState()
+    val currentCustomer = selectedCustomerState ?: customer
     val context = LocalContext.current
 
     var showAddTransactionDialog by remember { mutableStateOf(false) }
+    var showExportPdfDialog by remember { mutableStateOf(false) }
+    var showCustomerPdfsDialog by remember { mutableStateOf(false) }
     var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
+    var parentTransactionForPayment by remember { mutableStateOf<Transaction?>(null) }
+    var previewImagePath by remember { mutableStateOf<String?>(null) }
 
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
     val dateFormatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -66,16 +75,11 @@ fun CustomerDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showCustomerPdfsDialog = true }) {
+                        Icon(Icons.Default.FolderZip, contentDescription = "Saved PDFs", tint = MaterialTheme.colorScheme.primary)
+                    }
                     Button(
-                        onClick = {
-                            val details = viewModel.getAllTransactionsWithDetails()
-                            PdfGenerator.generateCustomerLedger(
-                                context = context,
-                                customer = customer,
-                                transactions = details,
-                                detailLevel = PdfDetailLevel.DETAILED
-                            )
-                        },
+                        onClick = { showExportPdfDialog = true },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
@@ -120,9 +124,28 @@ fun CustomerDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text("Phone: ${customer.phone}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("Phone: ${customer.phone}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (customer.phone.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, Uri.parse("tel:${customer.phone}"))
+                                            context.startActivity(intent)
+                                        },
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .background(Color(0xFFE8F5E9), androidx.compose.foundation.shape.CircleShape)
+                                    ) {
+                                        Icon(Icons.Default.Call, contentDescription = "Call Customer", tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                             if (customer.address.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text("Address: ${customer.address}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -135,6 +158,92 @@ fun CustomerDetailScreen(
                                 fontSize = 20.sp,
                                 color = if (customer.totalBalance >= 0) AdvanceText else ReceivableText
                             )
+                        }
+                    }
+                }
+            }
+
+            // Payment Reminder Box
+            item {
+                val reminderFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+                val activeReminder = currentCustomer.reminderTime?.takeIf { it > System.currentTimeMillis() }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (activeReminder != null) Color(0xFFE8F5E9) else Color(0xFFF3F4F6)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (activeReminder != null) Icons.Default.NotificationsActive else Icons.Default.AddAlarm,
+                                contentDescription = null,
+                                tint = if (activeReminder != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                            )
+                            Column {
+                                Text(
+                                    text = if (activeReminder != null) "Follow-up Reminder Set" else "Set Payment Reminder",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = if (activeReminder != null) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (activeReminder != null)
+                                        reminderFormat.format(Date(activeReminder))
+                                    else
+                                        "Tap to pick date & time for payment reminder",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    showDateTimePicker(context) { selectedMillis ->
+                                        val delay = selectedMillis - System.currentTimeMillis()
+                                        if (delay > 0) {
+                                            viewModel.setReminder(selectedMillis)
+                                            ReminderManager.scheduleReminder(context, currentCustomer.name, delay)
+                                            Toast.makeText(context, "Reminder set for ${reminderFormat.format(Date(selectedMillis))}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Please pick a future date and time", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (activeReminder != null) "Change" else "Set Date", fontSize = 11.sp)
+                            }
+
+                            if (activeReminder != null) {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.cancelReminder()
+                                        Toast.makeText(context, "Reminder cancelled", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Cancel Reminder", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -195,8 +304,14 @@ fun CustomerDetailScreen(
 
             // Transactions List
             items(transactions, key = { it.id }) { tx ->
+                val linkedPayments = remember(transactions, tx.id) {
+                    transactions.filter { it.parentTransactionId == tx.id }
+                }
+
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { transactionToEdit = tx },
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     shape = RoundedCornerShape(12.dp)
@@ -241,11 +356,28 @@ fun CustomerDetailScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
+                            if (tx.type == TransactionType.DEBIT && linkedPayments.isNotEmpty()) {
+                                val totalReceived = linkedPayments.sumOf { it.amount }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Surface(
+                                    color = Color(0xFFE8F5E9),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Received: ${currencyFormatter.format(totalReceived)} (${linkedPayments.size} part payment)",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1B5E20),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
                                 text = currencyFormatter.format(tx.amount),
@@ -254,15 +386,52 @@ fun CustomerDetailScreen(
                                 color = if (tx.type == TransactionType.DEBIT) Color(0xFFB71C1C) else Color(0xFF1B5E20)
                             )
 
-                            if (tx.attachmentPath != null || tx.driveFileId != null) {
-                                val imageUrl = tx.attachmentPath ?: "https://drive.google.com/thumbnail?id=${tx.driveFileId}&sz=w200"
+                            val imageModel: Any? = remember(tx.attachmentPath, tx.driveFileId) {
+                                g.p.cbb.utils.ImageResolver.resolveImageModel(tx.attachmentPath, tx.driveFileId)
+                            }
+
+                            if (imageModel != null) {
                                 AsyncImage(
-                                    model = imageUrl,
+                                    model = imageModel,
                                     contentDescription = "Receipt",
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(6.dp)),
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { previewImagePath = imageModel.toString() },
                                     contentScale = ContentScale.Crop
+                                )
+                            }
+
+                            if (tx.type == TransactionType.DEBIT) {
+                                IconButton(
+                                    onClick = { parentTransactionForPayment = tx },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = "Record Part Payment",
+                                        tint = Color(0xFF2E7D32),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    g.p.cbb.utils.ImageGenerator.shareBillImage(
+                                        context = context,
+                                        customer = customer,
+                                        bill = tx,
+                                        payments = linkedPayments
+                                    )
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Share Bill Image",
+                                    tint = Color(0xFF0288D1),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
 
@@ -286,37 +455,61 @@ fun CustomerDetailScreen(
         }
     }
 
-    // Add / Edit Transaction Dialog
-    if (showAddTransactionDialog || transactionToEdit != null) {
+    if (showExportPdfDialog) {
+        ExportPdfDialog(
+            customer = customer,
+            transactions = viewModel.getAllTransactionsWithDetails(),
+            onDismiss = { showExportPdfDialog = false }
+        )
+    }
+
+    if (showCustomerPdfsDialog) {
+        CustomerPdfsDialog(
+            customer = customer,
+            onDismiss = { showCustomerPdfsDialog = false },
+            onGenerateNewPdf = { showExportPdfDialog = true }
+        )
+    }
+
+    // Add / Edit / Part Payment Dialog
+    if (showAddTransactionDialog || transactionToEdit != null || parentTransactionForPayment != null) {
         AddEditTransactionDialog(
             customers = listOf(customer),
             preselectedCustomerId = customer.id,
+            parentTransactionId = parentTransactionForPayment?.id,
             transactionToEdit = transactionToEdit,
             onDismiss = {
                 showAddTransactionDialog = false
                 transactionToEdit = null
+                parentTransactionForPayment = null
             },
-            onConfirm = { _, amount, type, note, photoUri ->
+            onConfirm = { _, amount, type, note, photoUri, timestamp ->
                 if (transactionToEdit == null) {
+                    val permanentPath = g.p.cbb.utils.ImageUtils.ensurePermanentLocalPath(context, photoUri?.toString())
                     viewModel.addTransaction(
                         amount = amount,
                         type = type,
                         note = note,
-                        attachmentPath = photoUri?.toString()
+                        timestamp = timestamp,
+                        attachmentPath = permanentPath,
+                        parentTransactionId = parentTransactionForPayment?.id
                     )
                 } else {
+                    val permanentPath = g.p.cbb.utils.ImageUtils.ensurePermanentLocalPath(context, photoUri?.toString() ?: transactionToEdit!!.attachmentPath)
                     viewModel.updateTransaction(
                         oldTransaction = transactionToEdit!!,
                         newTransaction = transactionToEdit!!.copy(
                             amount = amount,
                             type = type,
                             note = note,
-                            attachmentPath = photoUri?.toString() ?: transactionToEdit!!.attachmentPath
+                            timestamp = timestamp,
+                            attachmentPath = permanentPath
                         )
                     )
                 }
                 showAddTransactionDialog = false
                 transactionToEdit = null
+                parentTransactionForPayment = null
             }
         )
     }
@@ -333,4 +526,44 @@ fun CustomerDetailScreen(
             }
         )
     }
+
+    if (previewImagePath != null) {
+        FullScreenImageViewer(
+            imagePath = previewImagePath!!,
+            onDismiss = { previewImagePath = null }
+        )
+    }
+}
+
+private fun showDateTimePicker(context: android.content.Context, onDateTimeSelected: (Long) -> Unit) {
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            calendar.set(Calendar.YEAR, year)
+            calendar.set(Calendar.MONTH, month)
+            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+            val timePickerDialog = android.app.TimePickerDialog(
+                context,
+                { _, hourOfDay, minute ->
+                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                    calendar.set(Calendar.MINUTE, minute)
+                    calendar.set(Calendar.SECOND, 0)
+                    calendar.set(Calendar.MILLISECOND, 0)
+
+                    onDateTimeSelected(calendar.timeInMillis)
+                },
+                calendar.get(Calendar.HOUR_OF_DAY),
+                calendar.get(Calendar.MINUTE),
+                false
+            )
+            timePickerDialog.show()
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+    datePickerDialog.datePicker.minDate = System.currentTimeMillis() - 1000
+    datePickerDialog.show()
 }
