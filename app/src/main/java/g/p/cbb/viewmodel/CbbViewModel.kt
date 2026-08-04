@@ -291,9 +291,9 @@ class CbbViewModel @Inject constructor(
         _selectedCustomer.value = customer
     }
 
-    fun addCustomer(name: String, phone: String, address: String) {
+    fun addCustomer(name: String, phone: String, address: String, profileImageUri: String? = null) {
         viewModelScope.launch {
-            repository.addCustomer(Customer(name = name, phone = phone, address = address))
+            repository.addCustomer(Customer(name = name, phone = phone, address = address, profileImageUri = profileImageUri))
             performSync(isManual = false)
         }
     }

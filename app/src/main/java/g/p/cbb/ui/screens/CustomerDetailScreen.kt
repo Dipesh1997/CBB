@@ -66,6 +66,7 @@ fun CustomerDetailScreen(
     var previewImagePath by remember { mutableStateOf<String?>(null) }
     var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var showQuickBillDialog by remember { mutableStateOf(false) }
+    var showEditCustomerDialog by remember { mutableStateOf(false) }
 
     // Temp file URI for camera capture
     val cameraPhotoFile = remember {
@@ -95,13 +96,16 @@ fun CustomerDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "${customer.name}'s Ledger", fontWeight = FontWeight.Bold) },
+                title = { Text(text = "${currentCustomer.name}'s Ledger", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showEditCustomerDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Customer", tint = MaterialTheme.colorScheme.primary)
+                    }
                     IconButton(onClick = { showCustomerPdfsDialog = true }) {
                         Icon(Icons.Default.FolderZip, contentDescription = "Saved PDFs", tint = MaterialTheme.colorScheme.primary)
                     }
@@ -163,39 +167,56 @@ fun CustomerDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text("Phone: ${customer.phone}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (customer.phone.isNotBlank()) {
-                                    IconButton(
-                                        onClick = {
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, Uri.parse("tel:${customer.phone}"))
-                                            context.startActivity(intent)
-                                        },
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .background(Color(0xFFE8F5E9), androidx.compose.foundation.shape.CircleShape)
-                                    ) {
-                                        Icon(Icons.Default.Call, contentDescription = "Call Customer", tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CustomerAvatar(
+                                name = currentCustomer.name,
+                                profileImageUri = currentCustomer.profileImageUri,
+                                size = 48.dp,
+                                onClick = {
+                                    if (!currentCustomer.profileImageUri.isNullOrBlank()) {
+                                        previewImagePath = currentCustomer.profileImageUri
                                     }
                                 }
-                            }
-                            if (customer.address.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("Address: ${customer.address}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            )
+
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("Phone: ${currentCustomer.phone}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (currentCustomer.phone.isNotBlank()) {
+                                        IconButton(
+                                            onClick = {
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, Uri.parse("tel:${currentCustomer.phone}"))
+                                                context.startActivity(intent)
+                                            },
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .background(Color(0xFFE8F5E9), androidx.compose.foundation.shape.CircleShape)
+                                        ) {
+                                            Icon(Icons.Default.Call, contentDescription = "Call Customer", tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                if (currentCustomer.address.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("Address: ${currentCustomer.address}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Balance", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                             Text(
-                                text = currencyFormatter.format(customer.totalBalance),
+                                text = currencyFormatter.format(currentCustomer.totalBalance),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp,
-                                color = if (customer.totalBalance >= 0) AdvanceText else ReceivableText
+                                color = if (currentCustomer.totalBalance >= 0) AdvanceText else ReceivableText
                             )
                         }
                     }
@@ -587,6 +608,25 @@ fun CustomerDetailScreen(
             onConfirm = {
                 viewModel.deleteTransaction(transactionToDelete!!)
                 transactionToDelete = null
+            }
+        )
+    }
+
+    if (showEditCustomerDialog) {
+        AddEditCustomerDialog(
+            customerToEdit = currentCustomer,
+            onDismiss = { showEditCustomerDialog = false },
+            onConfirm = { name, phone, address, profileImageUri, isBadDebt ->
+                viewModel.updateCustomer(
+                    currentCustomer.copy(
+                        name = name,
+                        phone = phone,
+                        address = address,
+                        profileImageUri = profileImageUri,
+                        isBadDebt = isBadDebt
+                    )
+                )
+                showEditCustomerDialog = false
             }
         )
     }

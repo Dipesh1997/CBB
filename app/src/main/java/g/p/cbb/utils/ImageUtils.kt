@@ -58,6 +58,56 @@ object ImageUtils {
     }
 
     /**
+     * Saves a customer profile photo.
+     * If [compress] is true, resizes and compresses image (JPEG 82% quality).
+     * If [compress] is false, saves original image file directly.
+     */
+    fun saveCustomerProfilePhoto(context: Context, imageUri: Uri, compress: Boolean = true): String? {
+        return try {
+            val profileFolder = StorageManager.getProfileFolder(context)
+            val extension = if (compress) "jpg" else (context.contentResolver.getType(imageUri)?.substringAfter("/") ?: "jpg")
+            val fileName = "profile_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(5)}.$extension"
+            val destFile = File(profileFolder, fileName)
+
+            if (compress) {
+                var bitmap = decodeAndScaleBitmapFromStream(
+                    getStream = { context.contentResolver.openInputStream(imageUri) },
+                    maxDim = MAX_DIMENSION
+                )
+
+                if (bitmap != null) {
+                    bitmap = rotateBitmapIfNeeded(context, imageUri, bitmap)
+                    FileOutputStream(destFile).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+                    }
+                } else {
+                    context.contentResolver.openInputStream(imageUri)?.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+            } else {
+                context.contentResolver.openInputStream(imageUri)?.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+
+            if (destFile.exists() && destFile.length() > 0) {
+                Log.i("ImageUtils", "Saved customer profile photo (compressed=$compress): ${destFile.absolutePath} (${destFile.length() / 1024} KB)")
+                destFile.absolutePath
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("ImageUtils", "Error saving customer profile photo: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
      * Ensures an attachment file is compressed before uploading to Google Drive or cloud sync.
      * Retains original file if already small (<250KB) and scaled.
      */

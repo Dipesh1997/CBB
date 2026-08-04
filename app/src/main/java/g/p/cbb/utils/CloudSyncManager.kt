@@ -183,7 +183,8 @@ class CloudSyncManager @Inject constructor(
                 customer.isBadDebt.toString(),
                 customer.createdBy,
                 customer.lastUpdated.toString(),
-                serverId
+                serverId,
+                customer.profileImageUri ?: ""
             )
             if (updateOrAppendRow(sheets, spreadsheetId, "Customers", serverId, row, 8)) {
                 customerDao.markSynced(customer.id, serverId)
@@ -327,6 +328,7 @@ class CloudSyncManager @Inject constructor(
             val createdBy = row.getOrNull(6)?.toString()?.trim() ?: "unknown"
             val last = row.getOrNull(7)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
             val sid = row.getOrNull(8)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "cust_$idStr"
+            val profileImageUri = row.getOrNull(9)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
             val local = customerDao.getCustomerByServerId(sid) 
                 ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
@@ -342,7 +344,8 @@ class CloudSyncManager @Inject constructor(
                     createdBy = createdBy,
                     lastUpdated = last,
                     syncStatus = 0,
-                    serverId = sid
+                    serverId = sid,
+                    profileImageUri = profileImageUri ?: local?.profileImageUri
                 )
                 customerDao.insertCustomer(customer)
                 count++

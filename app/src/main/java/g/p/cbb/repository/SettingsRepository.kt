@@ -50,6 +50,9 @@ class SettingsRepository @Inject constructor(
         return try { ThemeMode.valueOf(name) } catch (e: Exception) { ThemeMode.SYSTEM }
     }
     fun saveThemeMode(mode: ThemeMode) = prefs.edit().putString("theme_mode", mode.name).apply()
+
+    fun getCompressProfilePhotos(): Boolean = prefs.getBoolean("compress_profile_photos", true)
+    fun saveCompressProfilePhotos(enabled: Boolean) = prefs.edit().putBoolean("compress_profile_photos", enabled).apply()
 }
 
 enum class SortOption {

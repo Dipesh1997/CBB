@@ -279,57 +279,69 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = customer.name,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CustomerAvatar(
+                                name = customer.name,
+                                profileImageUri = customer.profileImageUri,
+                                size = 44.dp
+                            )
 
-                                // Status Badge
-                                when {
-                                    customer.isBadDebt -> {
-                                        Surface(
-                                            color = Color(0xFFFEE2E2),
-                                            shape = RoundedCornerShape(12.dp)
-                                        ) {
-                                            Text(
-                                                text = "BAD DEBT",
-                                                color = Color(0xFF991B1B),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = customer.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    // Status Badge
+                                    when {
+                                        customer.isBadDebt -> {
+                                            Surface(
+                                                color = Color(0xFFFEE2E2),
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Text(
+                                                    text = "BAD DEBT",
+                                                    color = Color(0xFF991B1B),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                    customer.totalBalance >= 10000 -> {
-                                        Surface(
-                                            color = WarningContainer,
-                                            shape = RoundedCornerShape(12.dp)
-                                        ) {
-                                            Text(
-                                                text = "HIGH OVERDUE",
-                                                color = OnWarningContainer,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
+                                        customer.totalBalance >= 10000 -> {
+                                            Surface(
+                                                color = WarningContainer,
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Text(
+                                                    text = "HIGH OVERDUE",
+                                                    color = OnWarningContainer,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = customer.phone,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = customer.phone,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
@@ -368,11 +380,19 @@ fun HomeScreen(
                 showAddCustomerDialog = false
                 customerToEdit = null
             },
-            onConfirm = { name, phone, address, isBadDebt ->
+            onConfirm = { name, phone, address, profileImageUri, isBadDebt ->
                 if (customerToEdit == null) {
-                    viewModel.addCustomer(name, phone, address)
+                    viewModel.addCustomer(name, phone, address, profileImageUri)
                 } else {
-                    viewModel.updateCustomer(customerToEdit!!.copy(name = name, phone = phone, address = address, isBadDebt = isBadDebt))
+                    viewModel.updateCustomer(
+                        customerToEdit!!.copy(
+                            name = name,
+                            phone = phone,
+                            address = address,
+                            profileImageUri = profileImageUri,
+                            isBadDebt = isBadDebt
+                        )
+                    )
                 }
                 showAddCustomerDialog = false
                 customerToEdit = null

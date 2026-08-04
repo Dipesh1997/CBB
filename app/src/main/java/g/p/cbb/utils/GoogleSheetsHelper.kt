@@ -66,7 +66,7 @@ object GoogleSheetsHelper {
     )
 
     private fun writeHeaders(sheets: Sheets, spreadsheetId: String) {
-        val customersHeader = listOf("ID", "Name", "Phone", "Address", "Balance", "IsBadDebt", "CreatedBy", "LastUpdated", "ServerID")
+        val customersHeader = listOf("ID", "Name", "Phone", "Address", "Balance", "IsBadDebt", "CreatedBy", "LastUpdated", "ServerID", "ProfileImageUri")
         val transactionsHeader = listOf("ID", "CustomerServerID", "Amount", "Type", "Timestamp", "Note", "Image Preview", "View Link", "DriveFileID", "ParentServerID", "CreatedBy", "LastUpdated", "ServerID")
         val historyHeader = listOf("ID", "Timestamp", "Action", "IsCloud", "ServerID")
         val trashHeader = listOf("Summary", "Type", "OriginalServerID", "DeletedAt", "DataBackup")

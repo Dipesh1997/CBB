@@ -16,5 +16,6 @@ data class Customer(
     val createdBy: String = "admin",
     val lastUpdated: Long = System.currentTimeMillis(),
     val syncStatus: Int = 1, // 0: Synced, 1: Pending
-    val serverId: String? = null
+    val serverId: String? = null,
+    val profileImageUri: String? = null
 )
