@@ -99,7 +99,11 @@ class CbbViewModel @Inject constructor(
     }
 
     fun syncNow() {
-        performSync(isManual = true)
+        performSync(isManual = true, forcePull = false)
+    }
+
+    fun restoreFromCloud() {
+        performSync(isManual = true, forcePull = true)
     }
 
     fun pickAccount() {
@@ -108,10 +112,10 @@ class CbbViewModel @Inject constructor(
         }
     }
 
-    private fun performSync(isManual: Boolean) {
+    private fun performSync(isManual: Boolean, forcePull: Boolean = false) {
         viewModelScope.launch {
             try {
-                syncManager.fullSync()
+                syncManager.fullSync(forcePull = forcePull)
                 if (isManual) _syncEvents.emit(SyncEvent.Success)
             } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
                 e.intent?.let { _syncEvents.emit(SyncEvent.RequestAuthorization(it)) }

@@ -88,9 +88,9 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    suspend fun fullSync() = syncLock.withLock {
+    suspend fun fullSync(forcePull: Boolean = false) = syncLock.withLock {
         withContext(Dispatchers.IO) {
-            Log.i("CloudSync", "--- MASTER v21 REPLICA SYNC START ---")
+            Log.i("CloudSync", "--- MASTER v21 REPLICA SYNC START (ForcePull: $forcePull) ---")
             
             val am = android.accounts.AccountManager.get(context)
             val accounts = try { am.getAccountsByType("com.google") } catch (e: Exception) { emptyArray() }
@@ -126,8 +126,8 @@ class CloudSyncManager @Inject constructor(
                 pushTombstones(sheets, spreadsheetId)
 
                 // Pull phase
-                val pulledCustomers = pullCustomers(sheets, spreadsheetId)
-                val pulledTransactions = pullTransactions(sheets, spreadsheetId, drive)
+                val pulledCustomers = pullCustomers(sheets, spreadsheetId, forcePull)
+                val pulledTransactions = pullTransactions(sheets, spreadsheetId, drive, forcePull)
                 val pulledTrash = pullTombstones(sheets, spreadsheetId)
                 
                 if (pulledTransactions > 0 || pulledCustomers > 0) {
@@ -309,7 +309,7 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String): Int {
+    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String, forcePull: Boolean = false): Int {
         val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
@@ -331,25 +331,27 @@ class CloudSyncManager @Inject constructor(
             val local = customerDao.getCustomerByServerId(sid) 
                 ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
 
-            val customer = Customer(
-                id = local?.id ?: 0,
-                name = name,
-                phone = phone,
-                address = address,
-                totalBalance = totalBalance,
-                isBadDebt = isBadDebt,
-                createdBy = createdBy,
-                lastUpdated = last,
-                syncStatus = 0,
-                serverId = sid
-            )
-            customerDao.insertCustomer(customer)
-            count++
+            if (forcePull || local == null || last > local.lastUpdated) {
+                val customer = Customer(
+                    id = local?.id ?: 0,
+                    name = name,
+                    phone = phone,
+                    address = address,
+                    totalBalance = totalBalance,
+                    isBadDebt = isBadDebt,
+                    createdBy = createdBy,
+                    lastUpdated = last,
+                    syncStatus = 0,
+                    serverId = sid
+                )
+                customerDao.insertCustomer(customer)
+                count++
+            }
         }
         return count
     }
 
-    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String, drive: Drive): Int {
+    private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String, drive: Drive, forcePull: Boolean = false): Int {
         val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
@@ -377,45 +379,47 @@ class CloudSyncManager @Inject constructor(
 
             val local = transactionDao.getTransactionByServerId(sid)
 
-            var localAttachmentPath = local?.attachmentPath
-            val localFileExists = ImageResolver.getLocalFile(localAttachmentPath) != null
-            if (!localFileExists && !driveFileId.isNullOrEmpty()) {
-                try {
-                    val attachmentFolder = StorageManager.getAttachmentFolder(context)
-                    val targetFile = java.io.File(attachmentFolder, "receipt_${driveFileId.trim()}.jpg")
-                    if (!targetFile.exists() || targetFile.length() == 0L) {
-                        val outputStream = java.io.FileOutputStream(targetFile)
-                        drive.files().get(driveFileId.trim()).executeMediaAndDownloadTo(outputStream)
-                        outputStream.close()
+            if (forcePull || local == null || last > local.lastUpdated) {
+                var localAttachmentPath = local?.attachmentPath
+                val localFileExists = ImageResolver.getLocalFile(localAttachmentPath) != null
+                if (!localFileExists && !driveFileId.isNullOrEmpty()) {
+                    try {
+                        val attachmentFolder = StorageManager.getAttachmentFolder(context)
+                        val targetFile = java.io.File(attachmentFolder, "receipt_${driveFileId.trim()}.jpg")
+                        if (!targetFile.exists() || targetFile.length() == 0L) {
+                            val outputStream = java.io.FileOutputStream(targetFile)
+                            drive.files().get(driveFileId.trim()).executeMediaAndDownloadTo(outputStream)
+                            outputStream.close()
+                        }
+                        if (targetFile.exists() && targetFile.length() > 0) {
+                            localAttachmentPath = targetFile.absolutePath
+                        }
+                    } catch (e: Exception) {
+                        Log.w("CloudSync", "Failed to download receipt image $driveFileId: ${e.message}")
                     }
-                    if (targetFile.exists() && targetFile.length() > 0) {
-                        localAttachmentPath = targetFile.absolutePath
-                    }
-                } catch (e: Exception) {
-                    Log.w("CloudSync", "Failed to download receipt image $driveFileId: ${e.message}")
                 }
+
+                val parentTx = parentServerId?.let { transactionDao.getTransactionByServerId(it) }
+
+                val tx = Transaction(
+                    id = local?.id ?: 0,
+                    customerId = cust.id,
+                    amount = amount,
+                    type = type,
+                    timestamp = timestamp,
+                    note = note,
+                    attachmentPath = localAttachmentPath,
+                    createdBy = createdBy,
+                    lastUpdated = last,
+                    syncStatus = 0,
+                    serverId = sid,
+                    driveFileId = driveFileId,
+                    parentTransactionId = parentTx?.id ?: local?.parentTransactionId,
+                    parentServerId = parentServerId
+                )
+                transactionDao.insertTransaction(tx)
+                count++
             }
-
-            val parentTx = parentServerId?.let { transactionDao.getTransactionByServerId(it) }
-
-            val tx = Transaction(
-                id = local?.id ?: 0,
-                customerId = cust.id,
-                amount = amount,
-                type = type,
-                timestamp = timestamp,
-                note = note,
-                attachmentPath = localAttachmentPath,
-                createdBy = createdBy,
-                lastUpdated = last,
-                syncStatus = 0,
-                serverId = sid,
-                driveFileId = driveFileId,
-                parentTransactionId = parentTx?.id ?: local?.parentTransactionId,
-                parentServerId = parentServerId
-            )
-            transactionDao.insertTransaction(tx)
-            count++
         }
         return count
     }
