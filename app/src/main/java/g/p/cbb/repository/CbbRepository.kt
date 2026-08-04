@@ -159,20 +159,21 @@ class CbbRepository @Inject constructor(
     suspend fun restoreTombstone(tombstone: Tombstone) = withContext(Dispatchers.IO) {
         try {
             val gson = com.google.gson.Gson()
+            val now = System.currentTimeMillis()
             if (tombstone.tableName == "transactions") {
                 val tx = gson.fromJson(tombstone.contentJson, Transaction::class.java)
                 if (tx != null) {
-                    val restoredTx = tx.copy(id = 0, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
+                    val restoredTx = tx.copy(id = 0, lastUpdated = now, syncStatus = 1)
                     transactionDao.insertTransaction(restoredTx)
                     val balanceChange = if (restoredTx.type == TransactionType.CREDIT) -restoredTx.amount else restoredTx.amount
-                    customerDao.updateBalance(restoredTx.customerId, balanceChange, System.currentTimeMillis())
+                    customerDao.updateBalance(restoredTx.customerId, balanceChange, now)
                     val cust = customerDao.getCustomerById(restoredTx.customerId)
                     logActivity("Restored Transaction: ${restoredTx.type} ₹${restoredTx.amount} for ${cust?.name ?: "Unknown"}")
                 }
             } else if (tombstone.tableName == "customers") {
                 val cust = gson.fromJson(tombstone.contentJson, Customer::class.java)
                 if (cust != null) {
-                    val restoredCust = cust.copy(id = 0, lastUpdated = System.currentTimeMillis(), syncStatus = 1)
+                    val restoredCust = cust.copy(id = 0, lastUpdated = now, syncStatus = 1)
                     customerDao.insertCustomer(restoredCust)
                     logActivity("Restored Customer: ${restoredCust.name}")
                 }

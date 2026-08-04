@@ -141,7 +141,7 @@ fun ActivityHistoryScreen(viewModel: CbbViewModel, onBack: () -> Unit) {
                                     Button(
                                         onClick = {
                                             viewModel.restoreTombstone(ts)
-                                            Toast.makeText(context, "Record restored successfully!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Record reactivated in ledger!", Toast.LENGTH_SHORT).show()
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),

@@ -458,20 +458,30 @@ class CloudSyncManager @Inject constructor(
                 )
             }
 
-            // Delete from local DB if still present
+            // Delete from local DB if still present and if the deletion is NEWER than local state
             if (tableName == "transactions") {
                 val localTx = transactionDao.getTransactionByServerId(serverId)
                 if (localTx != null) {
-                    val reverseAmount = if (localTx.type == TransactionType.CREDIT) localTx.amount else -localTx.amount
-                    customerDao.updateBalance(localTx.customerId, reverseAmount, System.currentTimeMillis())
-                    transactionDao.deleteTransaction(localTx)
-                    count++
+                    // Safety check: Only delete if the cloud deletion happened AFTER our local last update
+                    if (timestamp >= localTx.lastUpdated) {
+                        val reverseAmount = if (localTx.type == TransactionType.CREDIT) localTx.amount else -localTx.amount
+                        customerDao.updateBalance(localTx.customerId, reverseAmount, System.currentTimeMillis())
+                        transactionDao.deleteTransaction(localTx)
+                        count++
+                    } else {
+                        Log.i("CloudSync", "Ignoring cloud deletion for $serverId because local record is newer (Restored).")
+                    }
                 }
             } else if (tableName == "customers") {
                 val localCust = customerDao.getCustomerByServerId(serverId)
                 if (localCust != null) {
-                    customerDao.deleteCustomer(localCust)
-                    count++
+                    // Safety check: Only delete if the cloud deletion happened AFTER our local last update
+                    if (timestamp >= localCust.lastUpdated) {
+                        customerDao.deleteCustomer(localCust)
+                        count++
+                    } else {
+                        Log.i("CloudSync", "Ignoring cloud deletion for $serverId because local record is newer (Restored).")
+                    }
                 }
             }
         }
