@@ -17,6 +17,16 @@ object GoogleDriveHelper {
             .setFields("id")
             .execute()
         
+        // Make the uploaded image file readable to everyone so collaborators can view attachments without asking for grant access
+        try {
+            val permission = Permission()
+                .setType("anyone")
+                .setRole("reader")
+            drive.permissions().create(uploadedFile.id, permission).execute()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         return uploadedFile.id
     }
 

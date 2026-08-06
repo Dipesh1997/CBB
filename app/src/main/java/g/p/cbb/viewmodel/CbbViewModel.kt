@@ -14,10 +14,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 @HiltViewModel
 class CbbViewModel @Inject constructor(
+    @ApplicationContext private val context: android.content.Context,
     private val repository: CbbRepository,
     private val settingsRepository: SettingsRepository,
     private val authManager: GoogleAuthManager,
@@ -142,7 +144,8 @@ class CbbViewModel @Inject constructor(
                         else -> e.message ?: cause?.message ?: e.javaClass.simpleName
                     }
                     if (detailMsg.contains("UnregisteredOnApiConsole", ignoreCase = true)) {
-                        _syncEvents.emit(SyncEvent.Error("Google Console Registration Required:\nAdd Android Client ID for package g.p.cbb and SHA-1 ED:33:39:09:21:C0:08:08:DE:38:86:D6:41:25:90:A1:ED:CB:88:E8 in Google Cloud Console Credentials."))
+                        val currentSha1 = getAppSha1()
+                        _syncEvents.emit(SyncEvent.Error("Google Console Registration Required:\nAdd Android Client ID for package ${context.packageName} and SHA-1 $currentSha1 in Google Cloud Console Credentials."))
                     } else if (detailMsg.contains("name must not be empty", ignoreCase = true)) {
                         _syncEvents.emit(SyncEvent.PickAccount)
                     } else {
@@ -150,6 +153,33 @@ class CbbViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    private fun getAppSha1(): String {
+        return try {
+            val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+            }
+            val signatures = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+            val cert = signatures?.firstOrNull()?.toByteArray()
+            if (cert != null) {
+                val md = java.security.MessageDigest.getInstance("SHA-1")
+                val digest = md.digest(cert)
+                digest.joinToString(":") { "%02X".format(it) }
+            } else {
+                "ED:33:39:09:21:C0:08:08:DE:38:86:D6:41:25:90:A1:ED:CB:88:E8"
+            }
+        } catch (e: Exception) {
+            "ED:33:39:09:21:C0:08:08:DE:38:86:D6:41:25:90:A1:ED:CB:88:E8"
         }
     }
 

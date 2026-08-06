@@ -192,7 +192,8 @@ fun CustomerDetailScreen(
                                     if (currentCustomer.phone.isNotBlank()) {
                                         IconButton(
                                             onClick = {
-                                                val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, Uri.parse("tel:${currentCustomer.phone}"))
+                                                val cleanPhone = currentCustomer.phone.replace("-", "").replace(" ", "").replace("\u00A0", "").trim()
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, Uri.parse("tel:$cleanPhone"))
                                                 context.startActivity(intent)
                                             },
                                             modifier = Modifier
@@ -392,7 +393,9 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = dateFormatter.format(Date(tx.timestamp)),
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
 
                                 Surface(
@@ -404,6 +407,8 @@ fun CustomerDetailScreen(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (tx.type == TransactionType.DEBIT) Color(0xFFB71C1C) else Color(0xFF1B5E20),
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -414,7 +419,10 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = tx.note,
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
 
@@ -430,6 +438,9 @@ fun CustomerDetailScreen(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF1B5E20),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -444,7 +455,9 @@ fun CustomerDetailScreen(
                                 text = currencyFormatter.format(tx.amount),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = if (tx.type == TransactionType.DEBIT) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+                                color = if (tx.type == TransactionType.DEBIT) Color(0xFFB71C1C) else Color(0xFF1B5E20),
+                                maxLines = 1,
+                                softWrap = false
                             )
 
                             val imageModel: Any? = remember(tx.attachmentPath, tx.driveFileId) {

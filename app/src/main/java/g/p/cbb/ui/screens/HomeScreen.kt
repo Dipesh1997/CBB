@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import g.p.cbb.data.entity.Customer
@@ -72,7 +73,7 @@ fun HomeScreen(
     }
 
     val totalReceivable = customers.filter { it.totalBalance > 0 }.sumOf { it.totalBalance }
-    val totalAdvance = customers.filter { it.totalBalance < 0 }.sumOf { kotlin.math.abs(it.totalBalance) }
+    val totalBadDebt = customers.filter { it.isBadDebt }.sumOf { kotlin.math.abs(it.totalBalance) }
     val badDebtCount = customers.count { it.isBadDebt }
     val highOverdueCount = customers.count { !it.isBadDebt && it.totalBalance >= 10000 }
 
@@ -208,17 +209,39 @@ fun HomeScreen(
                         }
                     }
 
-                    // Advances Card
+                    // Total Bad Debt Card
                     Card(
                         modifier = Modifier.weight(1f),
                         colors = CardDefaults.cardColors(containerColor = if (isDark) AdvanceBgDark else AdvanceBg),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Total Advances", fontSize = 12.sp, color = if (isDark) AdvanceTextDark else AdvanceText)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Total Bad Debt", fontSize = 12.sp, color = if (isDark) AdvanceTextDark else AdvanceText)
+                                val alertCount = if (badDebtCount > 0) badDebtCount else highOverdueCount
+                                if (alertCount > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .background(color = Color(0xFFDC2626), shape = CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = alertCount.toString(),
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = currencyFormatter.format(totalAdvance),
+                                text = currencyFormatter.format(totalBadDebt),
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) AdvanceTextDark else AdvanceText
@@ -226,14 +249,6 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
-
-            // Risk Alert Banner
-            item {
-                RiskWarningBanner(
-                    badDebtCount = badDebtCount,
-                    highOverdueCount = highOverdueCount
-                )
             }
 
             // Search Bar & Customer Count Header
@@ -299,7 +314,10 @@ fun HomeScreen(
                                         text = customer.name,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
 
                                     // Status Badge
@@ -314,6 +332,8 @@ fun HomeScreen(
                                                     color = Color(0xFF991B1B),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                                 )
                                             }
@@ -328,6 +348,8 @@ fun HomeScreen(
                                                     color = OnWarningContainer,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                                 )
                                             }
