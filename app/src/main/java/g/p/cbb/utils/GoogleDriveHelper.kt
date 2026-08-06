@@ -38,4 +38,48 @@ object GoogleDriveHelper {
         
         drive.permissions().create(fileId, permission).execute()
     }
+
+    fun findFileByName(drive: Drive, name: String, mimeType: String): String? {
+        return try {
+            val query = "name = '$name' and mimeType = '$mimeType' and trashed = false"
+            val result = drive.files().list()
+                .setQ(query)
+                .setFields("files(id, name)")
+                .execute()
+            result.files?.firstOrNull()?.id
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun createFolder(drive: Drive, name: String): String {
+        val folderMetadata = File().apply {
+            this.name = name
+            mimeType = "application/vnd.google-apps.folder"
+        }
+        val created = drive.files().create(folderMetadata)
+            .setFields("id")
+            .execute()
+        
+        try {
+            val permission = Permission()
+                .setType("anyone")
+                .setRole("reader")
+            drive.permissions().create(created.id, permission).execute()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return created.id
+    }
+
+    fun createSpreadsheet(drive: Drive, name: String): String {
+        val fileMetadata = File().apply {
+            this.name = name
+            mimeType = "application/vnd.google-apps.spreadsheet"
+        }
+        val created = drive.files().create(fileMetadata)
+            .setFields("id")
+            .execute()
+        return created.id
+    }
 }

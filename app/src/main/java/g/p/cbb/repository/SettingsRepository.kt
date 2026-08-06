@@ -24,7 +24,7 @@ class SettingsRepository @Inject constructor(
         prefs.edit().putString("sort_option", option.name).apply()
     }
 
-    fun getSpreadsheetId(): String? = prefs.getString("spreadsheet_id", "1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58")
+    fun getSpreadsheetId(): String? = prefs.getString("spreadsheet_id", null)
     fun saveSpreadsheetId(id: String) = prefs.edit().putString("spreadsheet_id", id.trim()).apply()
 
     fun getDriveFolderId(): String? = prefs.getString("drive_folder_id", null)

@@ -118,6 +118,7 @@ class CbbViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 syncManager.fullSync(forcePull = forcePull)
+                currentSpreadsheetId.value = settingsRepository.getSpreadsheetId()
                 if (isManual) _syncEvents.emit(SyncEvent.Success)
             } catch (e: com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException) {
                 e.intent?.let { _syncEvents.emit(SyncEvent.RequestAuthorization(it)) }

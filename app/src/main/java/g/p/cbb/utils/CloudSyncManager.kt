@@ -113,7 +113,7 @@ class CloudSyncManager @Inject constructor(
             val drive = getDriveService(email)
 
             try {
-                val spreadsheetId = FIXED_SPREADSHEET_ID
+                val spreadsheetId = resolveSpreadsheetId(sheets, drive, email)
                 require(spreadsheetId.length > 5) { "FATAL: Spreadsheet ID is invalid!" }
                 
                 // Perfect Parity: Ensure headers are 13 columns for Transactions
@@ -205,7 +205,8 @@ class CloudSyncManager @Inject constructor(
                 val file = java.io.File(path)
                 if (file.exists()) {
                     val uploadFile = ImageUtils.getCompressedFileForUpload(context, file)
-                    driveFileId = GoogleDriveHelper.uploadFile(drive, uploadFile, null)
+                    val targetFolderId = resolveDriveFolderId(drive)
+                    driveFileId = GoogleDriveHelper.uploadFile(drive, uploadFile, targetFolderId)
                     transactionDao.updateDriveFileId(tx.id, driveFileId)
                 }
             }
@@ -496,5 +497,72 @@ class CloudSyncManager @Inject constructor(
         val drive = getDriveService(emailAddr)
         val targetSheetId = settingsRepository.getSpreadsheetId() ?: FIXED_SPREADSHEET_ID
         GoogleDriveHelper.shareWithUser(drive, targetSheetId, email)
+
+        settingsRepository.getDriveFolderId()?.let { folderId ->
+            try {
+                GoogleDriveHelper.shareWithUser(drive, folderId, email)
+            } catch (e: Exception) {
+                Log.w("CloudSync", "Folder share error: ${e.message}")
+            }
+        }
+    }
+
+    private fun resolveSpreadsheetId(sheets: Sheets, drive: Drive, email: String): String {
+        var savedId = settingsRepository.getSpreadsheetId()
+        if (!savedId.isNullOrEmpty()) {
+            try {
+                sheets.spreadsheets().get(savedId).execute()
+                return savedId
+            } catch (e: Exception) {
+                Log.w("CloudSync", "Saved spreadsheet ID $savedId inaccessible for $email. Resolving fallback...")
+                savedId = null
+            }
+        }
+
+        // 1. Check if master FIXED_SPREADSHEET_ID is accessible (for admin account or invited collaborators)
+        try {
+            sheets.spreadsheets().get(FIXED_SPREADSHEET_ID).execute()
+            settingsRepository.saveSpreadsheetId(FIXED_SPREADSHEET_ID)
+            Log.i("CloudSync", "Connected to Master Spreadsheet $FIXED_SPREADSHEET_ID")
+            return FIXED_SPREADSHEET_ID
+        } catch (e: Exception) {
+            Log.i("CloudSync", "Master spreadsheet not accessible for $email. Resolving personal spreadsheet...")
+        }
+
+        // 2. Search user's Google Drive for an existing spreadsheet named "Udaari Ledger Master"
+        val existingId = GoogleDriveHelper.findFileByName(drive, "Udaari Ledger Master", "application/vnd.google-apps.spreadsheet")
+        if (existingId != null) {
+            settingsRepository.saveSpreadsheetId(existingId)
+            Log.i("CloudSync", "Found existing personal spreadsheet on Drive: $existingId")
+            return existingId
+        }
+
+        // 3. Create a NEW Google Spreadsheet for this user on their Google Drive
+        val newId = GoogleDriveHelper.createSpreadsheet(drive, "Udaari Ledger Master")
+        GoogleSheetsHelper.setupSheets(sheets, newId)
+        settingsRepository.saveSpreadsheetId(newId)
+        Log.i("CloudSync", "Created new personal Google Spreadsheet on Drive: $newId")
+        return newId
+    }
+
+    private fun resolveDriveFolderId(drive: Drive): String? {
+        var folderId = settingsRepository.getDriveFolderId()
+        if (!folderId.isNullOrEmpty()) {
+            return folderId
+        }
+        return try {
+            val existingFolderId = GoogleDriveHelper.findFileByName(drive, "Udaari Ledger Attachments", "application/vnd.google-apps.folder")
+            if (existingFolderId != null) {
+                settingsRepository.saveDriveFolderId(existingFolderId)
+                existingFolderId
+            } else {
+                val newFolderId = GoogleDriveHelper.createFolder(drive, "Udaari Ledger Attachments")
+                settingsRepository.saveDriveFolderId(newFolderId)
+                newFolderId
+            }
+        } catch (e: Exception) {
+            Log.w("CloudSync", "Drive folder resolution error: ${e.message}")
+            null
+        }
     }
 }
