@@ -9,6 +9,9 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.tasks.await
 import dagger.hilt.android.qualifiers.ApplicationContext
 import g.p.cbb.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +32,9 @@ class GoogleAuthManager @Inject constructor(
     private val _userName = MutableStateFlow<String?>(settings.getUserName())
     val userName = _userName.asStateFlow()
 
+    private val _userProfilePic = MutableStateFlow<String?>(settings.getUserProfilePic())
+    val userProfilePic = _userProfilePic.asStateFlow()
+
     private val _accessToken = MutableStateFlow<String?>(settings.getAccessToken())
     val accessToken = _accessToken.asStateFlow()
 
@@ -42,12 +48,17 @@ class GoogleAuthManager @Inject constructor(
         }
     }
 
-    fun forceAccountLink(email: String) {
+    fun forceAccountLink(email: String, photoUrl: String? = null) {
         _userEmail.value = email
-        _userName.value = email.split("@")[0]
+        val name = email.split("@")[0]
+        _userName.value = name
         settings.saveUserEmail(email)
-        settings.saveUserName(_userName.value)
-        Log.d("GoogleAuth", "Silent account linked: $email")
+        settings.saveUserName(name)
+        if (photoUrl != null) {
+            _userProfilePic.value = photoUrl
+            settings.saveUserProfilePic(photoUrl)
+        }
+        Log.d("GoogleAuth", "Silent account linked: $email, photo: $photoUrl")
     }
 
     suspend fun signIn(activityContext: Context): Boolean {
@@ -58,7 +69,7 @@ class GoogleAuthManager @Inject constructor(
 
         val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
-            .setServerClientId("812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com")
+            .setServerClientId("812006416646-70f535jogrloppco7q8l0c0qoinoq2un.apps.googleusercontent.com")
             .setAutoSelectEnabled(false) // Disable auto-select for testing to force popup
             .build()
 
@@ -79,8 +90,18 @@ class GoogleAuthManager @Inject constructor(
                     Log.d("GoogleAuth", "Sign-in Success: ${credential.id}")
                     _userEmail.value = credential.id
                     _userName.value = credential.displayName
+                    val photoUrl = credential.profilePictureUri?.toString() ?: FirebaseAuth.getInstance().currentUser?.photoUrl?.toString()
+                    _userProfilePic.value = photoUrl
                     settings.saveUserEmail(credential.id)
                     settings.saveUserName(credential.displayName)
+                    settings.saveUserProfilePic(photoUrl)
+                    try {
+                        val firebaseCred = GoogleAuthProvider.getCredential(credential.idToken, null)
+                        FirebaseAuth.getInstance().signInWithCredential(firebaseCred).await()
+                        Log.d("GoogleAuth", "Firebase Auth successful for ${credential.id}")
+                    } catch (e: Exception) {
+                        Log.w("GoogleAuth", "Firebase auth fallback: ${e.message}")
+                    }
                     true
                 }
                 else -> {
@@ -90,8 +111,18 @@ class GoogleAuthManager @Inject constructor(
                         Log.d("GoogleAuth", "Sign-in Success (via data): ${googleIdTokenCredential.id}")
                         _userEmail.value = googleIdTokenCredential.id
                         _userName.value = googleIdTokenCredential.displayName
+                        val photoUrl = googleIdTokenCredential.profilePictureUri?.toString() ?: FirebaseAuth.getInstance().currentUser?.photoUrl?.toString()
+                        _userProfilePic.value = photoUrl
                         settings.saveUserEmail(googleIdTokenCredential.id)
                         settings.saveUserName(googleIdTokenCredential.displayName)
+                        settings.saveUserProfilePic(photoUrl)
+                        try {
+                            val firebaseCred = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
+                            FirebaseAuth.getInstance().signInWithCredential(firebaseCred).await()
+                            Log.d("GoogleAuth", "Firebase Auth successful for ${googleIdTokenCredential.id}")
+                        } catch (e: Exception) {
+                            Log.w("GoogleAuth", "Firebase auth fallback: ${e.message}")
+                        }
                         true
                     } catch (e: Exception) {
                         Log.e("GoogleAuth", "Unexpected credential type: ${credential.type}")
@@ -103,18 +134,18 @@ class GoogleAuthManager @Inject constructor(
         } catch (e: androidx.credentials.exceptions.GetCredentialException) {
             Log.e("GoogleAuth", "Sign-in Credential Error: [${e.type}] ${e.message}")
             val errorMsg = when (e) {
-                is androidx.credentials.exceptions.GetCredentialCancellationException -> "Sign-in cancelled"
-                is androidx.credentials.exceptions.GetCredentialInterruptedException -> "Sign-in interrupted"
-                is androidx.credentials.exceptions.GetCredentialProviderConfigurationException -> "Configuration error (Check Client ID/SHA-1)"
+                is androidx.credentials.exceptions.GetCredentialCancellationException -> "Sign-in cancelled. Select an account manually to sync."
+                is androidx.credentials.exceptions.GetCredentialInterruptedException -> "Sign-in interrupted."
+                is androidx.credentials.exceptions.GetCredentialProviderConfigurationException -> "Google One-Tap SHA-1 check skipped. Select your account below to link."
                 else -> {
                     if (e.type == "android.credentials.GetCredentialException.TYPE_NO_CREDENTIAL") {
-                        "No Google accounts found. Please sign in to Google in your phone settings."
+                        "No saved credentials. Please select your Google account below."
                     } else {
-                        "Sign-in failed: ${e.message}"
+                        "Opening Google Account Picker..."
                     }
                 }
             }
-            android.widget.Toast.makeText(activityContext, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(activityContext, errorMsg, android.widget.Toast.LENGTH_SHORT).show()
             false
         } catch (e: Exception) {
             Log.e("GoogleAuth", "Sign-in Unexpected Error: ${e.message}")

@@ -14,15 +14,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "812006416646-o8mifj1fe78sr6qlj0soagfhh4gdg2vd.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "g.p.cbb",
-            "certificate_hash": "ed33390921c00808de3886d6412590a1edcb88e8"
-          }
-        },
-        {
-          "client_id": "812006416646-70f535jogrloppco7q8l0c0qoinoq2un.apps.googleusercontent.com",
+          "client_id": "812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -35,7 +27,7 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "812006416646-70f535jogrloppco7q8l0c0qoinoq2un.apps.googleusercontent.com",
+              "client_id": "812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

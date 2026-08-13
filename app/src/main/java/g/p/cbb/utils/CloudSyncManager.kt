@@ -48,7 +48,7 @@ class CloudSyncManager @Inject constructor(
                 request.headers.authorization = "Bearer $token"
             }
         } else {
-            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
                 val targetEmail = email.trim()
                 val account = findSystemAccount(targetEmail)
                 if (account != null) selectedAccount = account else selectedAccountName = targetEmail
@@ -66,7 +66,7 @@ class CloudSyncManager @Inject constructor(
                 request.headers.authorization = "Bearer $token"
             }
         } else {
-            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
                 val targetEmail = email.trim()
                 val account = findSystemAccount(targetEmail)
                 if (account != null) selectedAccount = account else selectedAccountName = targetEmail
@@ -78,10 +78,11 @@ class CloudSyncManager @Inject constructor(
     }
 
     private fun findSystemAccount(email: String): Account? {
+        if (email.isBlank()) return null
         return try {
             val am = android.accounts.AccountManager.get(context)
             val accounts = am.getAccountsByType("com.google")
-            accounts.find { it.name.equals(email, ignoreCase = true) } ?: accounts.firstOrNull()
+            accounts.find { it.name.equals(email, ignoreCase = true) }
         } catch (e: Exception) {
             Log.e("CloudSync", "Error searching system accounts: ${e.message}")
             null
@@ -96,17 +97,19 @@ class CloudSyncManager @Inject constructor(
             val accounts = try { am.getAccountsByType("com.google") } catch (e: Exception) { emptyArray() }
             
             var email = authManager.userEmail.value
-            if (accounts.isNotEmpty()) {
-                val match = accounts.find { it.name.equals(email, ignoreCase = true) }
-                if (match != null) {
-                    email = match.name
-                } else {
+            if (email.isNullOrEmpty()) {
+                if (accounts.isNotEmpty()) {
                     email = accounts[0].name
                     authManager.forceAccountLink(email)
                     Log.i("CloudSync", "Auto-linked device Google account: $email")
+                } else {
+                    throw Exception("No Google account found on device. Please sign in.")
                 }
-            } else if (email.isNullOrEmpty()) {
-                throw Exception("No Google account found on device. Please add a Google account in phone settings.")
+            } else {
+                val match = accounts.find { it.name.equals(email, ignoreCase = true) }
+                if (match != null) {
+                    email = match.name
+                }
             }
             
             val sheets = getSheetsService(email)
@@ -266,14 +269,15 @@ class CloudSyncManager @Inject constructor(
                 if (sheetName != null && colIndex != -1) deleteRowByServerId(sheets, spreadsheetId, sheetName, serverId, colIndex)
             }
             val row = listOf(ts.summary, ts.tableName, ts.originalServerId ?: "", ts.timestamp.toString(), ts.contentJson)
-            sheets.spreadsheets().values().append(spreadsheetId, "Trash!A1", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
+            sheets.spreadsheets().values().append(spreadsheetId, "'Trash'!A1", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
             tombstoneDao.markSynced(ts.id)
         }
     }
 
     private suspend fun updateOrAppendRow(sheets: Sheets, spreadsheetId: String, sheetName: String, serverId: String, row: List<Any>, serverIdColIndex: Int): Boolean {
         try {
-            val values = sheets.spreadsheets().values().get(spreadsheetId, "$sheetName!A:Z").execute().getValues()
+            val safeSheetRange = "'$sheetName'!A:Z"
+            val values = sheets.spreadsheets().values().get(spreadsheetId, safeSheetRange).execute().getValues()
             var rowIndex = -1
             val targetSid = serverId.trim()
             if (values != null) {
@@ -285,9 +289,9 @@ class CloudSyncManager @Inject constructor(
                 }
             }
             if (rowIndex != -1) {
-                sheets.spreadsheets().values().update(spreadsheetId, "$sheetName!A$rowIndex", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
+                sheets.spreadsheets().values().update(spreadsheetId, "'$sheetName'!A$rowIndex", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
             } else {
-                sheets.spreadsheets().values().append(spreadsheetId, "$sheetName!A1", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
+                sheets.spreadsheets().values().append(spreadsheetId, "'$sheetName'!A1", ValueRange().setValues(listOf(row))).setValueInputOption("USER_ENTERED").execute()
             }
             return true
         } catch (e: Exception) { 
@@ -298,11 +302,11 @@ class CloudSyncManager @Inject constructor(
 
     private suspend fun deleteRowByServerId(sheets: Sheets, spreadsheetId: String, sheetName: String, serverId: String, serverIdColIndex: Int) {
         try {
-            val values = sheets.spreadsheets().values().get(spreadsheetId, "$sheetName!A:Z").execute().getValues() ?: return
+            val values = sheets.spreadsheets().values().get(spreadsheetId, "'$sheetName'!A:Z").execute().getValues() ?: return
             val targetSid = serverId.trim()
             for (i in values.indices) {
                 if (values[i].size > serverIdColIndex && values[i][serverIdColIndex].toString().trim() == targetSid) {
-                    sheets.spreadsheets().values().clear(spreadsheetId, "$sheetName!A${i+1}:Z${i+1}", com.google.api.services.sheets.v4.model.ClearValuesRequest()).execute()
+                    sheets.spreadsheets().values().clear(spreadsheetId, "'$sheetName'!A${i+1}:Z${i+1}", com.google.api.services.sheets.v4.model.ClearValuesRequest()).execute()
                     break
                 }
             }
@@ -312,7 +316,7 @@ class CloudSyncManager @Inject constructor(
     }
 
     private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String, forcePull: Boolean = false): Int {
-        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Customers!A:Z").execute().getValues() ?: return 0
+        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "'Customers'!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
         var count = 0
@@ -356,7 +360,7 @@ class CloudSyncManager @Inject constructor(
     }
 
     private suspend fun pullTransactions(sheets: Sheets, spreadsheetId: String, drive: Drive, forcePull: Boolean = false): Int {
-        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "Transactions!A:Z").execute().getValues() ?: return 0
+        val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "'Transactions'!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
         var count = 0
@@ -430,7 +434,7 @@ class CloudSyncManager @Inject constructor(
 
     private suspend fun pullTombstones(sheets: Sheets, spreadsheetId: String): Int {
         val rawValues = try {
-            sheets.spreadsheets().values().get(spreadsheetId, "Trash!A:Z").execute().getValues()
+            sheets.spreadsheets().values().get(spreadsheetId, "'Trash'!A:Z").execute().getValues()
         } catch (e: Exception) {
             null
         } ?: return 0
@@ -507,41 +511,53 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
+    private val premadeEmails = setOf("dipeshkataria3@gmail.com", "pk300pankaj@gmail.com")
+
     private fun resolveSpreadsheetId(sheets: Sheets, drive: Drive, email: String): String {
+        val cleanEmail = email.trim().lowercase(Locale.ROOT)
+
+        // RULE 1: Premade admin accounts (dipeshkataria3@gmail.com & pk300pankaj@gmail.com) connect to premade FIXED_SPREADSHEET_ID
+        if (premadeEmails.contains(cleanEmail)) {
+            try {
+                sheets.spreadsheets().get(FIXED_SPREADSHEET_ID).execute()
+                settingsRepository.saveSpreadsheetId(FIXED_SPREADSHEET_ID)
+                Log.i("CloudSync", "Connected premade admin $cleanEmail to Master Spreadsheet $FIXED_SPREADSHEET_ID")
+                return FIXED_SPREADSHEET_ID
+            } catch (e: Exception) {
+                Log.w("CloudSync", "Premade sheet access warning for $cleanEmail: ${e.message}")
+                return FIXED_SPREADSHEET_ID
+            }
+        }
+
+        // RULE 2: Check if user has a saved spreadsheet ID for THEIR account (e.g. joined via invite code or previously created)
         var savedId = settingsRepository.getSpreadsheetId()
-        if (!savedId.isNullOrEmpty()) {
+        if (!savedId.isNullOrEmpty() && savedId != FIXED_SPREADSHEET_ID) {
             try {
                 sheets.spreadsheets().get(savedId).execute()
+                Log.i("CloudSync", "Using user-specific saved spreadsheet ID $savedId for $cleanEmail")
                 return savedId
             } catch (e: Exception) {
-                Log.w("CloudSync", "Saved spreadsheet ID $savedId inaccessible for $email. Resolving fallback...")
+                Log.w("CloudSync", "Saved spreadsheet ID $savedId inaccessible for $cleanEmail. Re-resolving...")
                 savedId = null
             }
         }
 
-        // 1. Check if master FIXED_SPREADSHEET_ID is accessible (for admin account or invited collaborators)
-        try {
-            sheets.spreadsheets().get(FIXED_SPREADSHEET_ID).execute()
-            settingsRepository.saveSpreadsheetId(FIXED_SPREADSHEET_ID)
-            Log.i("CloudSync", "Connected to Master Spreadsheet $FIXED_SPREADSHEET_ID")
-            return FIXED_SPREADSHEET_ID
-        } catch (e: Exception) {
-            Log.i("CloudSync", "Master spreadsheet not accessible for $email. Resolving personal spreadsheet...")
-        }
+        // RULE 3: Search user's own Google Drive for an existing spreadsheet named "Udaari Ledger - $cleanEmail"
+        val sheetTitle = "Udaari Ledger - $cleanEmail"
+        val existingId = GoogleDriveHelper.findFileByName(drive, sheetTitle, "application/vnd.google-apps.spreadsheet")
+            ?: GoogleDriveHelper.findFileByName(drive, "Udaari Ledger Master", "application/vnd.google-apps.spreadsheet")
 
-        // 2. Search user's Google Drive for an existing spreadsheet named "Udaari Ledger Master"
-        val existingId = GoogleDriveHelper.findFileByName(drive, "Udaari Ledger Master", "application/vnd.google-apps.spreadsheet")
-        if (existingId != null) {
+        if (existingId != null && existingId != FIXED_SPREADSHEET_ID) {
             settingsRepository.saveSpreadsheetId(existingId)
-            Log.i("CloudSync", "Found existing personal spreadsheet on Drive: $existingId")
+            Log.i("CloudSync", "Found existing personal spreadsheet on Drive for $cleanEmail: $existingId")
             return existingId
         }
 
-        // 3. Create a NEW Google Spreadsheet for this user on their Google Drive
-        val newId = GoogleDriveHelper.createSpreadsheet(drive, "Udaari Ledger Master")
+        // RULE 4: Create a NEW Google Spreadsheet in this user's Google Drive!
+        val newId = GoogleDriveHelper.createSpreadsheet(drive, sheetTitle)
         GoogleSheetsHelper.setupSheets(sheets, newId)
         settingsRepository.saveSpreadsheetId(newId)
-        Log.i("CloudSync", "Created new personal Google Spreadsheet on Drive: $newId")
+        Log.i("CloudSync", "Created NEW personal Google Spreadsheet on Drive for $cleanEmail: $newId")
         return newId
     }
 

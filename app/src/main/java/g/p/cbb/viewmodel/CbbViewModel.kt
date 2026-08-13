@@ -55,6 +55,7 @@ class CbbViewModel @Inject constructor(
 
     val userEmail = authManager.userEmail
     val userName = authManager.userName
+    val userProfilePic = authManager.userProfilePic
 
     private val _availableAccounts = MutableStateFlow<List<String>>(emptyList())
     val availableAccounts = _availableAccounts.asStateFlow()
@@ -96,6 +97,9 @@ class CbbViewModel @Inject constructor(
             if (success) {
                 repository.markAllDataAsUnsynced()
                 performSync(isManual = true)
+            } else {
+                // Seamless fallback to device Google Account selector on SHA-1 error or credential failure
+                openAccountPicker(context)
             }
         }
     }

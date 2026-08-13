@@ -41,7 +41,8 @@ object GoogleDriveHelper {
 
     fun findFileByName(drive: Drive, name: String, mimeType: String): String? {
         return try {
-            val query = "name = '$name' and mimeType = '$mimeType' and trashed = false"
+            val safeName = name.replace("'", "\\'")
+            val query = "name = '$safeName' and mimeType = '$mimeType' and trashed = false"
             val result = drive.files().list()
                 .setQ(query)
                 .setFields("files(id, name)")

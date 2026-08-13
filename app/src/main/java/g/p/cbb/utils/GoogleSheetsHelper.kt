@@ -71,10 +71,10 @@ object GoogleSheetsHelper {
         val historyHeader = listOf("ID", "Timestamp", "Action", "IsCloud", "ServerID")
         val trashHeader = listOf("Summary", "Type", "OriginalServerID", "DeletedAt", "DataBackup")
         
-        updateRange(sheets, spreadsheetId, "$CUSTOMERS_SHEET!A1", listOf(customersHeader))
-        updateRange(sheets, spreadsheetId, "$TRANSACTIONS_SHEET!A1", listOf(transactionsHeader))
-        updateRange(sheets, spreadsheetId, "$HISTORY_SHEET!A1", listOf(historyHeader))
-        updateRange(sheets, spreadsheetId, "$TRASH_SHEET!A1", listOf(trashHeader))
+        updateRange(sheets, spreadsheetId, "'$CUSTOMERS_SHEET'!A1", listOf(customersHeader))
+        updateRange(sheets, spreadsheetId, "'$TRANSACTIONS_SHEET'!A1", listOf(transactionsHeader))
+        updateRange(sheets, spreadsheetId, "'$HISTORY_SHEET'!A1", listOf(historyHeader))
+        updateRange(sheets, spreadsheetId, "'$TRASH_SHEET'!A1", listOf(trashHeader))
     }
 
     fun updateRange(sheets: Sheets, spreadsheetId: String, range: String, values: List<List<Any>>) {

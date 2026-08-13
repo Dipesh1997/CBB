@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth Scopes Verification Video Generator - Udaari Ledger</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --surface-dark: #1e293b;
+            --surface-card: #0f172a;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --google-blue: #1a73e8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Top Simulation Bar */
+        .url-bar-container {
+            background: #1e293b;
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+
+        .url-bar {
+            flex: 1;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #cbd5e1;
+        }
+
+        .url-bar .lock-icon { color: #10b981; font-size: 16px; }
+        .url-highlight { color: #60a5fa; font-weight: 600; background: rgba(59, 130, 246, 0.15); padding: 2px 6px; border-radius: 4px; }
+        .client-id-badge { background: #1e1b4b; border: 1px solid #6366f1; color: #a5b4fc; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }
+
+        /* Main Workspace Layout */
+        .workspace {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            flex: 1;
+            height: calc(100vh - 60px);
+        }
+
+        /* Sidebar Control & Subtitles */
+        .sidebar-panel {
+            background: #1e293b;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        .controls-card {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover { background: #2563eb; transform: translateY(-1px); }
+        .btn-secondary { background: #334155; color: #f8fafc; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+
+        .nav-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .step-item {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .step-item:hover { border-color: var(--primary); }
+        .step-item.active {
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #334155;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .step-item.active .step-num { background: var(--primary); }
+        .step-info { flex: 1; }
+        .step-title { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+        .step-scope { font-size: 11px; color: #64748b; font-family: 'JetBrains Mono', monospace; }
+
+        /* Subtitle Box for Screen Recording */
+        .subtitle-box {
+            background: linear-gradient(135deg, #1e1b4b, #0f172a);
+            border: 1px solid #6366f1;
+            border-radius: 12px;
+            padding: 16px;
+            color: #e0e7ff;
+            font-size: 13px;
+            line-height: 1.6;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+            margin-top: auto;
+        }
+
+        .subtitle-title {
+            color: #818cf8;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Demo Viewport Area */
+        .demo-viewport {
+            background: #090d16;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .canvas-card {
+            width: 100%;
+            max-width: 900px;
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 540px;
+            position: relative;
+        }
+
+        .canvas-header {
+            background: #0f172a;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .canvas-title {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #f8fafc;
+        }
+
+        .scope-badge {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10b981;
+            color: #34d399;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .canvas-body {
+            padding: 24px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+        }
+
+        /* Google OAuth Consent Popup Simulation */
+        .google-consent-modal {
+            max-width: 440px;
+            margin: 20px auto;
+            background: #ffffff;
+            color: #202124;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+            text-align: center;
+            border: 1px solid #dadce0;
+        }
+
+        .google-logo { width: 64px; margin-bottom: 12px; }
+        .google-app-name { font-size: 20px; font-weight: 600; color: #202124; }
+        .google-subtitle { font-size: 13px; color: #5f6368; margin-top: 4px; margin-bottom: 20px; }
+        
+        .client-id-box {
+            background: #f8f9fa;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #3c4043;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 20px;
+            word-break: break-all;
+        }
+
+        .scopes-list-box {
+            text-align: left;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .scope-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: #3c4043;
+        }
+        .scope-row:last-child { margin-bottom: 0; }
+        .scope-row .material-icons { color: #1a73e8; font-size: 18px; margin-top: 2px; }
+
+        /* Split Screen Sync Demo */
+        .split-demo {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            height: 100%;
+        }
+
+        .demo-box {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .box-header {
+            font-size: 13px;
+            font-weight: 700;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .table-sim {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .table-sim th, .table-sim td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e293b;
+            text-align: left;
+        }
+
+        .table-sim th { color: #64748b; font-weight: 600; }
+        .table-sim td { color: #cbd5e1; }
+
+        .pulse-new {
+            animation: highlightPulse 2s infinite;
+        }
+
+        @keyframes highlightPulse {
+            0% { background: rgba(59, 130, 246, 0.3); }
+            50% { background: rgba(59, 130, 246, 0.1); }
+            100% { background: rgba(59, 130, 246, 0.3); }
+        }
+
+        .drive-file-card {
+            background: #1e293b;
+            border: 1px dashed var(--primary);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .thumbnail-img {
+            width: 70px;
+            height: 70px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid #475569;
+        }
+
+        /* Screen Recording Overlay Banner */
+        .recording-banner {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rec-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <!-- URL Bar Simulation showing Client ID -->
+    <div class="url-bar-container">
+        <div style="font-weight: 700; font-size: 14px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+            <span class="material-icons" style="color:var(--primary)">videocam</span>
+            <span>OAuth Verification Recording Mode</span>
+        </div>
+        <div class="url-bar">
+            <span class="material-icons lock-icon">lock</span>
+            <span>https://udaari-ledger.web.app/auth?</span>
+            <span class="url-highlight">client_id=812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com</span>
+            <span>&scope=spreadsheets+drive.file+drive.readonly+drive.metadata.readonly</span>
+        </div>
+        <div class="client-id-badge">Verified Client ID</div>
+    </div>
+
+    <div class="workspace">
+        <!-- Sidebar Controls & Script -->
+        <div class="sidebar-panel">
+            <div class="section-title">Video Recording Controls</div>
+            <div class="controls-card">
+                <button id="play-btn" class="btn btn-success" onclick="toggleAutoPlay()">
+                    <span class="material-icons">play_arrow</span>
+                    <span id="play-btn-text">Start Auto-Play Demo</span>
+                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" style="flex:1" onclick="prevStep()"><span class="material-icons">chevron_left</span> Prev</button>
+                    <button class="btn btn-secondary" style="flex:1" onclick="nextStep()">Next <span class="material-icons">chevron_right</span></button>
+                </div>
+            </div>
+
+            <div class="section-title">Verification Steps & Scopes</div>
+            <div class="nav-steps">
+                <div class="step-item active" onclick="setStep(0)" id="step-nav-0">
+                    <div class="step-num">1</div>
+                    <div class="step-info">
+                        <div class="step-title">OAuth Consent Screen</div>
+                        <div class="step-scope">Client ID & Permissions</div>
+                    </div>
+                </div>
+
+                <div class="step-item" onclick="setStep(1)" id="step-nav-1">
+                    <div class="step-num">2</div>
+                    <div class="step-info">
+                        <div class="step-title">Google Sheets Sync</div>
+                        <div class="step-scope">googleapis.com/auth/spreadsheets</div>
+                    </div>
+                </div>
+
+                <div class="step-item" onclick="setStep(2)" id="step-nav-2">
+                    <div class="step-num">3</div>
+                    <div class="step-info">
+                        <div class="step-title">Receipt Photo Upload</div>
+                        <div class="step-scope">googleapis.com/auth/drive.file</div>
+                    </div>
+                </div>
+
+                <div class="step-item" onclick="setStep(3)" id="step-nav-3">
+                    <div class="step-num">4</div>
+                    <div class="step-info">
+                        <div class="step-title">Receipt View & Thumbnail</div>
+                        <div class="step-scope">googleapis.com/auth/drive.readonly</div>
+                    </div>
+                </div>
+
+                <div class="step-item" onclick="setStep(4)" id="step-nav-4">
+                    <div class="step-num">5</div>
+                    <div class="step-info">
+                        <div class="step-title">Drive Metadata Resolution</div>
+                        <div class="step-scope">googleapis.com/auth/drive.metadata.readonly</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subtitle Card for OBS / Screen Recorder voiceover -->
+            <div class="subtitle-box">
+                <div class="subtitle-title">
+                    <span class="material-icons" style="font-size:14px">subtitles</span>
+                    <span>Voiceover / Subtitle Script</span>
+                </div>
+                <div id="subtitle-text">
+                    "Hello Google Verification Team. This video demonstrates the OAuth scope usage for Udaari Ledger. Here in the URL bar, you can clearly see our OAuth Client ID: 812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com."
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Demo Viewport -->
+        <div class="demo-viewport">
+            <div class="canvas-card">
+                <div class="recording-banner">
+                    <div class="rec-dot"></div>
+                    <span>REC READY (1080p)</span>
+                </div>
+
+                <div class="canvas-header">
+                    <div class="canvas-title">
+                        <span class="material-icons" id="canvas-icon" style="color:var(--primary)">verified_user</span>
+                        <span id="canvas-title-text">Step 1: OAuth Consent Screen & Client ID</span>
+                    </div>
+                    <div class="scope-badge" id="canvas-scope-badge">OAuth Consent Screen</div>
+                </div>
+
+                <div class="canvas-body" id="canvas-body">
+                    <!-- Populated dynamically by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STEPS = [
+            {
+                num: 1,
+                title: "Step 1: OAuth Consent Screen & Client ID",
+                scope: "Client ID Verification",
+                icon: "verified_user",
+                subtitle: "Hello Google Verification Team. This video demonstrates the OAuth scope usage for Udaari Ledger. Here in the address bar and consent prompt, you can see our Client ID: 812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com.",
+                render: () => `
+                    <div class="google-consent-modal">
+                        <img src="https://www.google.com/favicon.ico" class="google-logo" alt="Google">
+                        <div class="google-app-name">Sign in to Udaari Ledger</div>
+                        <div class="google-subtitle">Choose an account to continue to Udaari Ledger</div>
+                        
+                        <div class="client-id-box">
+                            <b>OAuth Client ID:</b><br>
+                            812006416646-cd28a14enlpg87ktbeim0l02m6f965q9.apps.googleusercontent.com
+                        </div>
+
+                        <div class="scopes-list-box">
+                            <div style="font-size:12px; font-weight:700; color:#202124; margin-bottom:10px;">Udaari Ledger wants to access your Google Account:</div>
+                            <div class="scope-row">
+                                <span class="material-icons">grid_on</span>
+                                <div><b>Google Sheets:</b> See, edit, create, and delete all your Google Sheets spreadsheets</div>
+                            </div>
+                            <div class="scope-row">
+                                <span class="material-icons">cloud_upload</span>
+                                <div><b>Google Drive File:</b> Create and manage receipt attachment files created by this app</div>
+                            </div>
+                            <div class="scope-row">
+                                <span class="material-icons">preview</span>
+                                <div><b>Google Drive Read:</b> Read and display uploaded receipt photo previews</div>
+                            </div>
+                            <div class="scope-row">
+                                <span class="material-icons">folder_special</span>
+                                <div><b>Google Drive Metadata:</b> Locate user's existing Udaari Ledger spreadsheets</div>
+                            </div>
+                        </div>
+
+                        <button style="background:#1a73e8; color:white; border:none; padding:10px 24px; border-radius:20px; font-weight:600; cursor:pointer; width:100%;">
+                            Allow Permissions
+                        </button>
+                    </div>
+                `
+            },
+            {
+                num: 2,
+                title: "Step 2: Google Sheets API Usage",
+                scope: "googleapis.com/auth/spreadsheets",
+                icon: "grid_on",
+                subtitle: "First, we demonstrate https://www.googleapis.com/auth/spreadsheets. Udaari Ledger uses this scope to store, update, and sync customer ledger balances and transactions in real-time to the user's personal Google Sheet.",
+                render: () => `
+                    <div class="split-demo">
+                        <div class="demo-box">
+                            <div class="box-header"><span class="material-icons" style="color:#60a5fa">smartphone</span> Udaari Ledger App UI</div>
+                            <div style="background:#1e293b; padding:12px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-weight:700; font-size:14px;">Ramesh Kumar</div>
+                                    <div style="font-size:12px; color:#94a3b8;">Phone: +91 98765 43210</div>
+                                </div>
+                                <div style="color:#ef4444; font-weight:700;">₹ 1,500 (You Gave)</div>
+                            </div>
+                            <div style="background:#10b981; color:white; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600; text-align:center;">
+                                ✓ Transaction Recorded & Batch Pushed to Sheets
+                            </div>
+                        </div>
+
+                        <div class="demo-box">
+                            <div class="box-header"><span class="material-icons" style="color:#34d399">table_chart</span> User's Google Sheet (Live Sync)</div>
+                            <table class="table-sim">
+                                <thead>
+                                    <tr><th>Customer</th><th>Amount</th><th>Type</th><th>Timestamp</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="pulse-new">
+                                        <td><b>Ramesh Kumar</b></td>
+                                        <td>₹ 1,500.00</td>
+                                        <td><span style="color:#ef4444; font-weight:700;">DEBIT</span></td>
+                                        <td>Just Now</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Anil Sharma</td>
+                                        <td>₹ 500.00</td>
+                                        <td><span style="color:#10b981; font-weight:700;">CREDIT</span></td>
+                                        <td>Today, 10:30 AM</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `
+            },
+            {
+                num: 3,
+                title: "Step 3: Google Drive File Scope Usage",
+                scope: "googleapis.com/auth/drive.file",
+                icon: "cloud_upload",
+                subtitle: "Second, https://www.googleapis.com/auth/drive.file is used to upload bill receipt images attached by the user into a dedicated 'Udaari Ledger Attachments' folder inside their own Google Drive account.",
+                render: () => `
+                    <div style="display:flex; flex-direction:column; gap:16px;">
+                        <div class="drive-file-card">
+                            <img src="https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=300" class="thumbnail-img" alt="Receipt">
+                            <div style="flex:1;">
+                                <div style="font-weight:700; font-size:14px; color:#f8fafc;">Receipt_Invoice_2026.jpg</div>
+                                <div style="font-size:12px; color:#94a3b8;">Size: 342 KB • Status: Uploading to Google Drive...</div>
+                                <div style="background:#334155; height:6px; border-radius:3px; margin-top:8px; overflow:hidden;">
+                                    <div style="width:100%; height:100%; background:#3b82f6;"></div>
+                                </div>
+                            </div>
+                            <span class="material-icons" style="color:#10b981; font-size:28px;">check_circle</span>
+                        </div>
+
+                        <div class="demo-box">
+                            <div class="box-header"><span class="material-icons" style="color:#f59e0b">folder</span> User's Google Drive / Udaari Ledger Attachments</div>
+                            <div style="font-size:12px; color:#cbd5e1; display:flex; align-items:center; gap:10px; background:#0f172a; padding:10px; border-radius:8px;">
+                                <span class="material-icons" style="color:#3b82f6">image</span>
+                                <div>
+                                    <b>receipt_1tTnbqhjkKLSvQxm3rI.jpg</b><br>
+                                    <span style="font-size:11px; color:#64748b;">Uploaded via Drive.File Scope • File ID: 1A2b3C4d5E6f</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            {
+                num: 4,
+                title: "Step 4: Google Drive Read Access Scope",
+                scope: "googleapis.com/auth/drive.readonly",
+                icon: "preview",
+                subtitle: "Third, https://www.googleapis.com/auth/drive.readonly allows Udaari Ledger to fetch thumbnail previews and full-resolution receipt images for display in customer statements and PDF exports.",
+                render: () => `
+                    <div class="demo-box" style="align-items:center; text-align:center; padding:32px;">
+                        <div style="font-size:14px; font-weight:700; color:#f8fafc; margin-bottom:12px;">Fetched Receipt Thumbnail & Statement Preview</div>
+                        <img src="https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600" style="max-width:320px; border-radius:12px; border:2px solid #3b82f6; box-shadow:0 10px 25px rgba(0,0,0,0.5);" alt="Receipt">
+                        <div style="font-size:12px; color:#94a3b8; margin-top:12px;">
+                            Displaying high-resolution receipt image directly inside PDF Statement Exporter
+                        </div>
+                    </div>
+                `
+            },
+            {
+                num: 5,
+                title: "Step 5: Google Drive Metadata Resolution Scope",
+                scope: "googleapis.com/auth/drive.metadata.readonly",
+                icon: "folder_special",
+                subtitle: "Fourth, https://www.googleapis.com/auth/drive.metadata.readonly is used to search for pre-existing Udaari Ledger spreadsheets and attachment folders when a user signs in on a new device.",
+                render: () => `
+                    <div class="demo-box" style="padding:24px;">
+                        <div class="box-header"><span class="material-icons" style="color:#6366f1">search</span> Auto-Detecting User Ledger Assets</div>
+                        <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+                            <div style="background:#1e293b; padding:12px; border-radius:8px; display:flex; align-items:center; gap:12px;">
+                                <span class="material-icons" style="color:#10b981">check_circle</span>
+                                <div style="font-size:12px;">
+                                    <b>Found Master Sheet:</b> Udaari Ledger Master<br>
+                                    <span style="font-size:11px; color:#64748b;">Spreadsheet ID: 1tTnbqhjkKLSvQxm3rI-rHCue_oRhWIjgzgZQsySuR58</span>
+                                </div>
+                            </div>
+                            <div style="background:#1e293b; padding:12px; border-radius:8px; display:flex; align-items:center; gap:12px;">
+                                <span class="material-icons" style="color:#10b981">check_circle</span>
+                                <div style="font-size:12px;">
+                                    <b>Found Attachment Folder:</b> Udaari Ledger Attachments<br>
+                                    <span style="font-size:11px; color:#64748b;">Folder ID: folder_812006416646_attachments</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `
+            }
+        ];
+
+        let currentStepIndex = 0;
+        let isAutoPlaying = false;
+        let timer = null;
+
+        function setStep(index) {
+            currentStepIndex = index;
+            const step = STEPS[currentStepIndex];
+
+            // Update Nav UI
+            document.querySelectorAll('.step-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+
+            // Update Canvas UI
+            document.getElementById('canvas-title-text').textContent = step.title;
+            document.getElementById('canvas-scope-badge').textContent = step.scope;
+            document.getElementById('canvas-icon').textContent = step.icon;
+            document.getElementById('subtitle-text').textContent = step.subtitle;
+            document.getElementById('canvas-body').innerHTML = step.render();
+        }
+
+        function nextStep() {
+            setStep((currentStepIndex + 1) % STEPS.length);
+        }
+
+        function prevStep() {
+            setStep((currentStepIndex - 1 + STEPS.length) % STEPS.length);
+        }
+
+        function toggleAutoPlay() {
+            isAutoPlaying = !isAutoPlaying;
+            const btnText = document.getElementById('play-btn-text');
+            const playBtn = document.getElementById('play-btn');
+
+            if (isAutoPlaying) {
+                btnText.textContent = "Pause Auto-Play Demo";
+                playBtn.classList.remove('btn-success');
+                playBtn.classList.add('btn-secondary');
+                timer = setInterval(() => {
+                    nextStep();
+                }, 7000);
+            } else {
+                btnText.textContent = "Start Auto-Play Demo";
+                playBtn.classList.remove('btn-secondary');
+                playBtn.classList.add('btn-success');
+                clearInterval(timer);
+            }
+        }
+
+        // Initialize Step 1
+        setStep(0);
+    </script>
+</body>
+</html>

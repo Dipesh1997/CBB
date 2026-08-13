@@ -24,8 +24,30 @@ class SettingsRepository @Inject constructor(
         prefs.edit().putString("sort_option", option.name).apply()
     }
 
-    fun getSpreadsheetId(): String? = prefs.getString("spreadsheet_id", null)
-    fun saveSpreadsheetId(id: String) = prefs.edit().putString("spreadsheet_id", id.trim()).apply()
+    fun getSpreadsheetId(): String? {
+        val email = getUserEmail()
+        if (!email.isNullOrEmpty()) {
+            val userSpecificId = prefs.getString("spreadsheet_id_$email", null)
+            if (userSpecificId != null) return userSpecificId
+        }
+        return prefs.getString("spreadsheet_id", null)
+    }
+
+    fun saveSpreadsheetId(id: String) {
+        val cleanId = id.trim()
+        prefs.edit().putString("spreadsheet_id", cleanId).apply()
+        val email = getUserEmail()
+        if (!email.isNullOrEmpty()) {
+            prefs.edit().putString("spreadsheet_id_$email", cleanId).apply()
+        }
+    }
+
+    fun clearSpreadsheetIdForUser(email: String?) {
+        if (!email.isNullOrEmpty()) {
+            prefs.edit().remove("spreadsheet_id_$email").apply()
+        }
+        prefs.edit().remove("spreadsheet_id").apply()
+    }
 
     fun getDriveFolderId(): String? = prefs.getString("drive_folder_id", null)
     fun saveDriveFolderId(id: String) = prefs.edit().putString("drive_folder_id", id).apply()
@@ -35,6 +57,9 @@ class SettingsRepository @Inject constructor(
 
     fun getUserName(): String? = prefs.getString("user_name", null)
     fun saveUserName(name: String?) = prefs.edit().putString("user_name", name).apply()
+
+    fun getUserProfilePic(): String? = prefs.getString("user_profile_pic", null)
+    fun saveUserProfilePic(url: String?) = prefs.edit().putString("user_profile_pic", url).apply()
 
     fun getAccessToken(): String? = prefs.getString("access_token", null)
     fun saveAccessToken(token: String?) = prefs.edit().putString("access_token", token).apply()
