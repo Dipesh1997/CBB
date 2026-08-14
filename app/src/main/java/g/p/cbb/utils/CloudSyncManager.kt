@@ -48,7 +48,7 @@ class CloudSyncManager @Inject constructor(
                 request.headers.authorization = "Bearer $token"
             }
         } else {
-            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE)).apply {
                 val targetEmail = email.trim()
                 val account = findSystemAccount(targetEmail)
                 if (account != null) selectedAccount = account else selectedAccountName = targetEmail
@@ -66,7 +66,7 @@ class CloudSyncManager @Inject constructor(
                 request.headers.authorization = "Bearer $token"
             }
         } else {
-            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE, DriveScopes.DRIVE_FILE, DriveScopes.DRIVE_METADATA_READONLY)).apply {
+            GoogleAccountCredential.usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE)).apply {
                 val targetEmail = email.trim()
                 val account = findSystemAccount(targetEmail)
                 if (account != null) selectedAccount = account else selectedAccountName = targetEmail
@@ -123,13 +123,13 @@ class CloudSyncManager @Inject constructor(
                 GoogleSheetsHelper.setupSheets(sheets, spreadsheetId)
 
                 // Push phase
-                pushCustomers(sheets, spreadsheetId)
+                pushCustomers(sheets, spreadsheetId, drive)
                 pushTransactions(sheets, spreadsheetId, drive)
                 pushHistory(sheets, spreadsheetId)
                 pushTombstones(sheets, spreadsheetId)
 
                 // Pull phase
-                val pulledCustomers = pullCustomers(sheets, spreadsheetId, forcePull)
+                val pulledCustomers = pullCustomers(sheets, spreadsheetId, drive, forcePull)
                 val pulledTransactions = pullTransactions(sheets, spreadsheetId, drive, forcePull)
                 val pulledTrash = pullTombstones(sheets, spreadsheetId)
                 
@@ -172,11 +172,28 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    private suspend fun pushCustomers(sheets: Sheets, spreadsheetId: String) {
+    private suspend fun pushCustomers(sheets: Sheets, spreadsheetId: String, drive: Drive) {
         val unsynced = customerDao.getUnsyncedCustomers()
         unsynced.forEach { customer ->
             val serverId = customer.serverId ?: UUID.randomUUID().toString()
             if (customer.serverId == null) customerDao.updateServerId(customer.id, serverId)
+
+            var profileDriveFileId = customer.profileDriveFileId ?: ""
+            customer.profileImageUri?.let { path ->
+                val file = ImageResolver.getLocalFile(path)
+                if (file != null && file.exists()) {
+                    if (profileDriveFileId.isEmpty()) {
+                        val uploadFile = ImageUtils.getCompressedFileForUpload(context, file)
+                        val targetFolderId = resolveDriveFolderId(drive)
+                        val uploadedId = GoogleDriveHelper.uploadFile(drive, uploadFile, targetFolderId)
+                        if (uploadedId.isNotEmpty()) {
+                            profileDriveFileId = uploadedId
+                            customerDao.updateProfileDriveFileId(customer.id, profileDriveFileId)
+                        }
+                    }
+                }
+            }
+
             val row = listOf(
                 customer.id.toString(),
                 customer.name,
@@ -187,7 +204,7 @@ class CloudSyncManager @Inject constructor(
                 customer.createdBy,
                 customer.lastUpdated.toString(),
                 serverId,
-                customer.profileImageUri ?: ""
+                profileDriveFileId
             )
             if (updateOrAppendRow(sheets, spreadsheetId, "Customers", serverId, row, 8)) {
                 customerDao.markSynced(customer.id, serverId)
@@ -315,11 +332,12 @@ class CloudSyncManager @Inject constructor(
         }
     }
 
-    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String, forcePull: Boolean = false): Int {
+    private suspend fun pullCustomers(sheets: Sheets, spreadsheetId: String, drive: Drive, forcePull: Boolean = false): Int {
         val rawValues = sheets.spreadsheets().values().get(spreadsheetId, "'Customers'!A:Z").execute().getValues() ?: return 0
         if (rawValues.size <= 1) return 0
         val rows = rawValues.drop(1)
         var count = 0
+        val profileFolder = StorageManager.getProfileFolder(context)
         rows.forEach { row ->
             if (row.size < 2) return@forEach
             val idStr = row.getOrNull(0)?.toString()?.trim() ?: ""
@@ -333,10 +351,34 @@ class CloudSyncManager @Inject constructor(
             val createdBy = row.getOrNull(6)?.toString()?.trim() ?: "unknown"
             val last = row.getOrNull(7)?.toString()?.trim()?.toLongOrNull() ?: System.currentTimeMillis()
             val sid = row.getOrNull(8)?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "cust_$idStr"
-            val profileImageUri = row.getOrNull(9)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            val rawDriveOrPath = row.getOrNull(9)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+
+            var profileDriveFileId: String? = null
+            if (rawDriveOrPath != null && !rawDriveOrPath.contains("/") && !rawDriveOrPath.contains("\\") && !rawDriveOrPath.startsWith("content:") && !rawDriveOrPath.startsWith("file:")) {
+                profileDriveFileId = rawDriveOrPath
+            }
 
             val local = customerDao.getCustomerByServerId(sid) 
                 ?: customerDao.getCustomersListSync().find { it.name.equals(name, ignoreCase = true) }
+
+            var localProfilePath = local?.profileImageUri
+            val localFileExists = ImageResolver.getLocalFile(localProfilePath) != null
+
+            if (!localFileExists && !profileDriveFileId.isNullOrEmpty()) {
+                try {
+                    val targetFile = java.io.File(profileFolder, "profile_${profileDriveFileId.trim()}.jpg")
+                    if (!targetFile.exists() || targetFile.length() == 0L) {
+                        val outputStream = java.io.FileOutputStream(targetFile)
+                        drive.files().get(profileDriveFileId.trim()).executeMediaAndDownloadTo(outputStream)
+                        outputStream.close()
+                    }
+                    if (targetFile.exists() && targetFile.length() > 0) {
+                        localProfilePath = targetFile.absolutePath
+                    }
+                } catch (e: Exception) {
+                    Log.w("CloudSync", "Failed to download profile image $profileDriveFileId: ${e.message}")
+                }
+            }
 
             if (forcePull || local == null || last > local.lastUpdated) {
                 val customer = Customer(
@@ -350,7 +392,8 @@ class CloudSyncManager @Inject constructor(
                     lastUpdated = last,
                     syncStatus = 0,
                     serverId = sid,
-                    profileImageUri = profileImageUri ?: local?.profileImageUri
+                    profileImageUri = localProfilePath,
+                    profileDriveFileId = profileDriveFileId ?: local?.profileDriveFileId
                 )
                 customerDao.insertCustomer(customer)
                 count++

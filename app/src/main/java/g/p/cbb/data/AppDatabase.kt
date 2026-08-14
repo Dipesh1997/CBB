@@ -14,7 +14,7 @@ import g.p.cbb.data.entity.*
         ActivityLog::class, 
         Tombstone::class
     ], 
-    version = 22, 
+    version = 23, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)

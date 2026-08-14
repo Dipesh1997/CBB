@@ -41,4 +41,7 @@ interface CustomerDao {
 
     @Query("UPDATE customers SET serverId = :serverId WHERE id = :id")
     suspend fun updateServerId(id: Long, serverId: String)
+
+    @Query("UPDATE customers SET profileDriveFileId = :driveFileId WHERE id = :id")
+    suspend fun updateProfileDriveFileId(id: Long, driveFileId: String)
 }

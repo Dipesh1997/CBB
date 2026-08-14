@@ -30,22 +30,13 @@ import java.io.File
 fun CustomerAvatar(
     name: String,
     profileImageUri: String?,
+    profileDriveFileId: String? = null,
     size: Dp = 40.dp,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
-    val imageModel: Any? = remember(profileImageUri) {
-        if (profileImageUri.isNullOrBlank()) null
-        else {
-            val trimmed = profileImageUri.trim()
-            if (trimmed.startsWith("content://") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                Uri.parse(trimmed)
-            } else if (trimmed.startsWith("file://")) {
-                Uri.parse(trimmed)
-            } else {
-                File(trimmed)
-            }
-        }
+    val imageModel: Any? = remember(profileImageUri, profileDriveFileId) {
+        g.p.cbb.utils.ImageResolver.resolveImageModel(profileImageUri, profileDriveFileId)
     }
 
     val initial = name.trim().take(1).uppercase()

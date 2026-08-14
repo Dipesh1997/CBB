@@ -302,6 +302,7 @@ fun HomeScreen(
                             CustomerAvatar(
                                 name = customer.name,
                                 profileImageUri = customer.profileImageUri,
+                                profileDriveFileId = customer.profileDriveFileId,
                                 size = 44.dp
                             )
 
@@ -412,6 +413,7 @@ fun HomeScreen(
                             phone = phone,
                             address = address,
                             profileImageUri = profileImageUri,
+                            profileDriveFileId = if (profileImageUri != customerToEdit!!.profileImageUri) null else customerToEdit!!.profileDriveFileId,
                             isBadDebt = isBadDebt
                         )
                     )

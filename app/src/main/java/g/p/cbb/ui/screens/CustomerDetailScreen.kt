@@ -175,10 +175,12 @@ fun CustomerDetailScreen(
                             CustomerAvatar(
                                 name = currentCustomer.name,
                                 profileImageUri = currentCustomer.profileImageUri,
+                                profileDriveFileId = currentCustomer.profileDriveFileId,
                                 size = 48.dp,
                                 onClick = {
-                                    if (!currentCustomer.profileImageUri.isNullOrBlank()) {
-                                        previewImagePath = currentCustomer.profileImageUri
+                                    val resolved = g.p.cbb.utils.ImageResolver.resolveImageModel(currentCustomer.profileImageUri, currentCustomer.profileDriveFileId)
+                                    if (resolved != null) {
+                                        previewImagePath = resolved.toString()
                                     }
                                 }
                             )
@@ -636,6 +638,7 @@ fun CustomerDetailScreen(
                         phone = phone,
                         address = address,
                         profileImageUri = profileImageUri,
+                        profileDriveFileId = if (profileImageUri != currentCustomer.profileImageUri) null else currentCustomer.profileDriveFileId,
                         isBadDebt = isBadDebt
                     )
                 )
