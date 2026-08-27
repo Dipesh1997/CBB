@@ -67,6 +67,11 @@ fun CustomerDetailScreen(
     var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var showQuickBillDialog by remember { mutableStateOf(false) }
     var showEditCustomerDialog by remember { mutableStateOf(false) }
+    var filterSinceZero by remember { mutableStateOf(false) }
+    val transactionsSinceZero = remember(customerTransactions) {
+        g.p.cbb.utils.LedgerUtils.getRawTransactionsSinceLastZeroBalance(customerTransactions)
+    }
+    val displayedTransactions = if (filterSinceZero) transactionsSinceZero else customerTransactions
 
     // Temp file URI for camera capture
     val cameraPhotoFile = remember {
@@ -356,18 +361,79 @@ fun CustomerDetailScreen(
                 }
             }
 
-            // Transactions Header
+            // Transactions Header & Filter Chips
             item {
-                Text(
-                    text = "Transactions History (${customerTransactions.size})",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Transactions (${displayedTransactions.size})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+
+                        FilterChip(
+                            selected = filterSinceZero,
+                            onClick = { filterSinceZero = !filterSinceZero },
+                            label = {
+                                Text(
+                                    text = if (filterSinceZero) "Since ₹0 Balance" else "All Entries",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (filterSinceZero) Icons.Default.FilterList else Icons.Default.List,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        )
+                    }
+
+                    if (filterSinceZero) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Showing entries since last cleared balance (₹0.00)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                TextButton(
+                                    onClick = {
+                                        PdfGenerator.generateCustomerLedger(
+                                            context = context,
+                                            customer = currentCustomer,
+                                            transactions = customerTransactions.map { g.p.cbb.data.model.TransactionWithDetails(it) },
+                                            detailLevel = PdfDetailLevel.DETAILED,
+                                            sinceLastZeroBalance = true
+                                        )
+                                    },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Export PDF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Transactions List
-            items(customerTransactions, key = { it.id }) { tx ->
+            items(displayedTransactions, key = { it.id }) { tx ->
                 val linkedPayments = remember(customerTransactions, tx.id) {
                     customerTransactions.filter { it.parentTransactionId == tx.id }
                 }

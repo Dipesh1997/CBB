@@ -217,14 +217,18 @@ class CbbViewModel @Inject constructor(
     val sortOption = _sortOption.asStateFlow()
 
     val customers = combine(repository.getAllCustomers(), _sortOption) { customers, option ->
-        val active = customers.filter { !it.isBadDebt }.let { list ->
-            when (option) {
-                SortOption.NAME -> list.sortedBy { it.name }
-                SortOption.BALANCE_LOW_TO_HIGH -> list.sortedBy { it.totalBalance }
-                SortOption.BALANCE_HIGH_TO_LOW -> list.sortedByDescending { it.totalBalance }
+        fun List<Customer>.applySort(opt: SortOption): List<Customer> {
+            return when (opt) {
+                SortOption.NAME_ASC -> sortedBy { it.name.lowercase() }
+                SortOption.NAME_DESC -> sortedByDescending { it.name.lowercase() }
+                SortOption.DATE_NEWEST -> sortedByDescending { it.lastUpdated }
+                SortOption.DATE_OLDEST -> sortedBy { it.lastUpdated }
+                SortOption.AMOUNT_HIGH_TO_LOW -> sortedByDescending { it.totalBalance }
+                SortOption.AMOUNT_LOW_TO_HIGH -> sortedBy { it.totalBalance }
             }
         }
-        val badDebt = customers.filter { it.isBadDebt }.sortedBy { it.name }
+        val active = customers.filter { !it.isBadDebt }.applySort(option)
+        val badDebt = customers.filter { it.isBadDebt }.applySort(option)
         active + badDebt
     }.flowOn(Dispatchers.Default)
     .stateIn(

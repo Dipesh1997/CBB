@@ -92,6 +92,27 @@ fun ExportPdfDialog(
                     Text("Full Statement (Detailed with Photos)")
                 }
 
+                // Since Last Cleared Balance (0 Balance) Button
+                Button(
+                    onClick = {
+                        PdfGenerator.generateCustomerLedger(
+                            context = context,
+                            customer = customer,
+                            transactions = transactions,
+                            detailLevel = PdfDetailLevel.DETAILED,
+                            sinceLastZeroBalance = true
+                        )
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.TableRows, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Since Last ₹0 Balance (New Bills)")
+                }
+
                 // Summary Button
                 OutlinedButton(
                     onClick = {

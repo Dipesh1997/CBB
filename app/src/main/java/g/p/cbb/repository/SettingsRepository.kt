@@ -12,12 +12,8 @@ class SettingsRepository @Inject constructor(
     private val prefs = context.getSharedPreferences("cbb_settings", Context.MODE_PRIVATE)
 
     fun getSortOption(): SortOption {
-        val name = prefs.getString("sort_option", SortOption.NAME.name) ?: SortOption.NAME.name
-        return try {
-            SortOption.valueOf(name)
-        } catch (e: Exception) {
-            SortOption.NAME
-        }
+        val name = prefs.getString("sort_option", SortOption.NAME_ASC.name)
+        return SortOption.fromString(name)
     }
 
     fun saveSortOption(option: SortOption) {
@@ -80,10 +76,24 @@ class SettingsRepository @Inject constructor(
     fun saveCompressProfilePhotos(enabled: Boolean) = prefs.edit().putBoolean("compress_profile_photos", enabled).apply()
 }
 
-enum class SortOption {
-    NAME,
-    BALANCE_LOW_TO_HIGH,
-    BALANCE_HIGH_TO_LOW
+enum class SortOption(val label: String) {
+    NAME_ASC("Name (A to Z)"),
+    NAME_DESC("Name (Z to A)"),
+    DATE_NEWEST("Date (Newest First)"),
+    DATE_OLDEST("Date (Oldest First)"),
+    AMOUNT_HIGH_TO_LOW("Amount (High to Low)"),
+    AMOUNT_LOW_TO_HIGH("Amount (Low to High)");
+
+    companion object {
+        fun fromString(value: String?): SortOption {
+            return when (value) {
+                "NAME" -> NAME_ASC
+                "BALANCE_HIGH_TO_LOW" -> AMOUNT_HIGH_TO_LOW
+                "BALANCE_LOW_TO_HIGH" -> AMOUNT_LOW_TO_HIGH
+                else -> entries.firstOrNull { it.name == value } ?: NAME_ASC
+            }
+        }
+    }
 }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }

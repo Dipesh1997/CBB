@@ -37,11 +37,18 @@ object PdfGenerator {
         transactions: List<TransactionWithDetails>,
         detailLevel: PdfDetailLevel = PdfDetailLevel.DETAILED,
         startDate: Long? = null,
-        endDate: Long? = null
+        endDate: Long? = null,
+        sinceLastZeroBalance: Boolean = false
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val filteredTransactions = transactions.filter { item ->
+                val initialList = if (sinceLastZeroBalance) {
+                    LedgerUtils.getTransactionsSinceLastZeroBalance(transactions)
+                } else {
+                    transactions
+                }
+
+                val filteredTransactions = initialList.filter { item ->
                     val matchesCustomer = item.transaction.customerId == customer.id
                     val ts = item.transaction.timestamp
                     val afterStart = startDate == null || ts >= startDate
@@ -75,7 +82,15 @@ object PdfGenerator {
                 canvas.drawText("Current Balance: ₹${"%.2f".format(customer.totalBalance)}", MARGIN, y, paint)
                 y += 20f
 
-                if (startDate != null && endDate != null) {
+                if (sinceLastZeroBalance) {
+                    paint.textSize = 12f
+                    paint.color = Color.parseColor("#1B5E20")
+                    paint.isFakeBoldText = true
+                    canvas.drawText("Filter: Statement since last cleared balance (₹0.00)", MARGIN, y, paint)
+                    y += 20f
+                    paint.color = Color.BLACK
+                    paint.isFakeBoldText = false
+                } else if (startDate != null && endDate != null) {
                     val rangeFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
                     canvas.drawText("Date Range: ${rangeFormat.format(Date(startDate))} - ${rangeFormat.format(Date(endDate))}", MARGIN, y, paint)
                     y += 20f
@@ -221,11 +236,23 @@ object PdfGenerator {
                 y += 20f
             }
 
-            // Draw Image Attachment
+            // Draw Image Attachment with Full Resolution (No downscaling of bitmap pixels)
             val bitmap = loadTransactionBitmap(context, transaction.attachmentPath, transaction.driveFileId)
             if (bitmap != null) {
-                val scaledBitmap = scaleBitmap(bitmap, (PAGE_WIDTH - MARGIN * 2).toInt(), 260)
-                if (y + scaledBitmap.height > PAGE_HEIGHT - MARGIN - 20f) {
+                val maxDrawWidth = PAGE_WIDTH - MARGIN * 2 // 515f
+                val aspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                var drawWidth = maxDrawWidth
+                var drawHeight = drawWidth / aspectRatio
+
+                // Limit display height per bill entry to 420pt so it fits nicely on page
+                if (drawHeight > 420f) {
+                    drawHeight = 420f
+                    drawWidth = drawHeight * aspectRatio
+                }
+
+                val drawLeft = MARGIN + (maxDrawWidth - drawWidth) / 2f
+
+                if (y + drawHeight > PAGE_HEIGHT - MARGIN - 20f) {
                     pdfDocument.finishPage(currentPage)
                     pageNumber++
                     currentPage = pdfDocument.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
@@ -233,8 +260,10 @@ object PdfGenerator {
                     y = MARGIN + 20f
                 }
 
-                canvas.drawBitmap(scaledBitmap, MARGIN, y, paint)
-                y += scaledBitmap.height + 20f
+                val destRect = android.graphics.RectF(drawLeft, y, drawLeft + drawWidth, y + drawHeight)
+                // Draw original uncompressed bitmap directly to canvas RectF so PDF zooming retains crispness
+                canvas.drawBitmap(bitmap, null, destRect, paint)
+                y += drawHeight + 20f
             }
 
             // Divider Line
@@ -257,11 +286,11 @@ object PdfGenerator {
         }
 
         if (!driveFileId.isNullOrBlank()) {
-            val driveUrl1 = "https://lh3.googleusercontent.com/d/${driveFileId.trim()}=w800"
+            val driveUrl1 = "https://lh3.googleusercontent.com/d/${driveFileId.trim()}=w2000"
             val bitmap1 = loadBitmapFromPath(context, driveUrl1)
             if (bitmap1 != null) return bitmap1
 
-            val driveUrl2 = "https://drive.google.com/thumbnail?id=${driveFileId.trim()}&sz=w800"
+            val driveUrl2 = "https://drive.google.com/thumbnail?id=${driveFileId.trim()}&sz=w2000"
             return loadBitmapFromPath(context, driveUrl2)
         }
 
