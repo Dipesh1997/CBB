@@ -198,33 +198,36 @@ object ImageGenerator {
                 val cleanName = customer.name.replace("\\s+".toRegex(), "_")
                 val fileName = "Bill_${cleanName}_tx${bill.id}_${timestampStr}.png"
 
-                // App Statements folder
+                // App Invoices folder
                 val appFile = File(StorageManager.getInvoiceFolder(context), fileName)
                 FileOutputStream(appFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
 
-                // Downloads directory
-                val downloadsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "udaari/bills")
-                if (!downloadsDir.exists()) downloadsDir.mkdirs()
-                val downloadsFile = File(downloadsDir, fileName)
-                try {
-                    FileOutputStream(downloadsFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
-                } catch (e: Exception) {
-                    Log.w("ImageGenerator", "Could not write to Downloads: ${e.message}")
+                // Save to Gallery via MediaStore API on Android 10+ (API 29+)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    try {
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/udaari/bills")
+                            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val resolver = context.contentResolver
+                        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        if (uri != null) {
+                            resolver.openOutputStream(uri)?.use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            values.clear()
+                            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                            resolver.update(uri, values, null, null)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("ImageGenerator", "Could not save to MediaStore: ${e.message}")
+                    }
                 }
 
-                // Pictures directory
-                val picturesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "udaari/bills")
-                if (!picturesDir.exists()) picturesDir.mkdirs()
-                val picturesFile = File(picturesDir, fileName)
-                try {
-                    FileOutputStream(picturesFile).use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
-                } catch (e: Exception) {
-                    Log.w("ImageGenerator", "Could not write to Pictures: ${e.message}")
-                }
-
-                // Scan files for Gallery / File Manager visibility
-                val pathsToScan = arrayOf(appFile.absolutePath, downloadsFile.absolutePath, picturesFile.absolutePath)
-                MediaScannerConnection.scanFile(context, pathsToScan, null, null)
+                // Scan app file for MediaScanner
+                MediaScannerConnection.scanFile(context, arrayOf(appFile.absolutePath), null, null)
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Bill Image saved to Downloads & Gallery", Toast.LENGTH_LONG).show()

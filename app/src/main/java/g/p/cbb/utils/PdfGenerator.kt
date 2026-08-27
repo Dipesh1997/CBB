@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -110,10 +111,31 @@ object PdfGenerator {
                 pdfDocument.writeTo(FileOutputStream(file))
                 pdfDocument.close()
 
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    try {
+                        val contentValues = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/udaari/statements")
+                        }
+                        val resolver = context.contentResolver
+                        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                        if (uri != null) {
+                            resolver.openOutputStream(uri)?.use { outStream ->
+                                file.inputStream().use { inputStream ->
+                                    inputStream.copyTo(outStream)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
                 android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
 
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, "Statement Saved: Documents/udaari/statements", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Statement Saved to App Storage & Downloads", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -41,7 +41,6 @@ fun getCustomerPdfFiles(context: Context, customerName: String): List<File> {
 
     val foldersToSearch = listOf(
         StorageManager.getStatementFolder(context),
-        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "udaari/statements"),
         context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)?.let { File(it, "udaari/statements") }
     ).filterNotNull()
 
